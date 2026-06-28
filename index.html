@@ -1370,7 +1370,7 @@ function mostrarMsg(texto, tipo) {
 
 async function redirecionarPorPerfil(user) {
   const email = user.email;
-  const { data: psi } = await db.from('psicologas').select('id').eq('email', email).maybeSingle();
+  const { data: psi } = await db.from('psicologos').select('id').eq('email', email).maybeSingle();
   if (psi) { window.location.href = 'dashboard-psicologo.html'; return; }
   const { data: emp } = await db.from('empresas').select('id').eq('email', email).maybeSingle();
   if (emp) { window.location.href = 'empresa.html'; return; }
@@ -1409,7 +1409,7 @@ async function fazerLogin() {
   let lista = demoFaixa;
 
   try {
-    const { data } = await db.from('psicologas').select('id, nome, crp, abordagem, foto_url').limit(20);
+    const { data } = await db.from('psicologos').select('id, nome, crp, abordagem, foto_url').limit(20);
     if (data && data.length > 0) lista = data;
   } catch(e) {}
 
