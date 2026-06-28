@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Dashboard Empresa</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF;
+  --surface: #FFFFFF;
+  --surface2: #f0ece6;
+  --border: #E2DED8;
+  --navy: #2D4A6B;
+  --navy-light: #3D5F85;
+  --sage: #5B8C6E;
+  --sage-light: #7AAF8E;
+  --accent: #2D4A6B;
+  --accent2: #5B8C6E;
+  --text: #1A2332;
+  --muted: #6B7A8D;
+  --success: #5B8C6E;
+  --warning: #b45309;
+  --error: #b91c1c;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 24px 0; position: fixed; height: 100vh; overflow-y: auto; }
+.logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.logo-mark { width: 40px; height: 40px; background: linear-gradient(135deg, var(--navy), var(--sage)); border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: white; margin-bottom: 10px; }
+.logo h2 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--navy), var(--sage)); color: var(--navy); }
+.logo p { font-size: 12px; color: var(--muted); }
+nav a { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; border-radius: 8px; margin: 2px 8px; transition: all 0.15s; }
+nav a:hover, nav a.active { background: var(--surface2); color: var(--text); }
+nav a.active { color: var(--navy); }
+.nav-icon { font-size: 18px; width: 22px; }
+.sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+.user-info { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--navy), var(--sage)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+.user-name { font-size: 13px; font-weight: 600; }
+.user-role { font-size: 11px; color: var(--muted); }
+.logout-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; margin-left: auto; }
+.logout-btn:hover { color: var(--error); }
+.main { margin-left: 240px; padding: 32px; flex: 1; }
+.page-header { margin-bottom: 28px; }
+.page-header h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.page-header p { color: var(--muted); font-size: 14px; }
+.tab-section { display: none; }
+.tab-section.active { display: block; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.stat-value { font-family: 'DM Serif Display', serif; font-size: 28px; font-weight: 700; }
+.stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 20px; }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; }
+thead th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 0 12px; font-weight: 500; }
+tbody td { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+.progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; width: 100px; }
+.progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.badge.ok { background: rgba(52,211,153,0.15); color: var(--success); }
+.badge.alerta { background: rgba(251,191,36,0.15); color: var(--warning); }
+.badge.inativo { background: rgba(248,113,113,0.15); color: var(--error); }
+.alerta-item { display: flex; align-items: flex-start; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.alerta-item:last-child { border-bottom: none; }
+.alerta-icon { font-size: 20px; }
+.alerta-texto .titulo { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+.alerta-texto .detalhe { font-size: 12px; color: var(--muted); }
+.dept-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.dept-nome { font-size: 14px; min-width: 120px; }
+.dept-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.dept-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.dept-pct { font-size: 13px; font-weight: 600; min-width: 36px; text-align: right; }
+.loading { text-align: center; color: var(--muted); padding: 40px; font-size: 14px; }
+.privacy-note { background: rgba(45,74,107,0.08); border: 1px solid rgba(45,74,107,0.2); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">M</div>
+      <h2>Mind</h2>
+      <p id="sidebar-empresa">Empresa</p>
+    </div>
+    <nav>
+      <a href="#" class="active" onclick="mostrarAba('visao', this)"><span class="nav-icon">🏠</span>Visão Geral</a>
+      <a href="#" onclick="mostrarAba('equipe', this)"><span class="nav-icon">👥</span>Equipe</a>
+      <a href="#" onclick="mostrarAba('financeiro', this)"><span class="nav-icon">💰</span>Financeiro</a>
+      <a href="#" onclick="mostrarAba('relatorios', this)"><span class="nav-icon">📄</span>Relatórios</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-info">
+        <div class="avatar" id="avatar-inicial">E</div>
+        <div><div class="user-name" id="user-nome">Carregando...</div><div class="user-role">RH</div></div>
+        <button class="logout-btn" onclick="sair()" title="Sair">⏏</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1 id="titulo-pagina">Visão Geral</h1>
+      <p id="subtitulo-pagina">Indicadores de saúde mental da equipe</p>
+    </div>
+
+    <!-- VISÃO GERAL -->
+    <div id="aba-visao" class="tab-section active">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Colaboradores</div><div class="stat-value" id="stat-colab">—</div><div class="stat-sub">vinculados ao Mind</div></div>
+        <div class="stat-card"><div class="stat-label">Sessões este mês</div><div class="stat-value" id="stat-sessoes">—</div><div class="stat-sub">realizadas</div></div>
+        <div class="stat-card"><div class="stat-label">Taxa de adesão</div><div class="stat-value" id="stat-adesao">—</div><div class="stat-sub">média da equipe</div></div>
+        <div class="stat-card"><div class="stat-label">Custo mensal</div><div class="stat-value" id="stat-custo">—</div><div class="stat-sub">investimento total</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>🏢 Adesão por departamento</h3>
+          <div id="dept-lista"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="card">
+          <h3>⚠️ Alertas</h3>
+          <div id="alertas-lista"><div class="loading">Carregando...</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📊 Sessões por mês</h3>
+        <canvas id="chart-sessoes" height="80"></canvas>
+      </div>
+      <div class="privacy-note">🔒 Dados clínicos individuais são confidenciais e visíveis apenas pela psicóloga responsável.</div>
+    </div>
+
+    <!-- EQUIPE -->
+    <div id="aba-equipe" class="tab-section">
+      <div class="card">
+        <h3>👥 Colaboradores vinculados</h3>
+        <div id="tabela-equipe"><div class="loading">Carregando...</div></div>
+        <div class="privacy-note" style="margin-top:16px">🔒 Informações clínicas como diagnóstico e conteúdo de sessões não são exibidas aqui.</div>
+      </div>
+    </div>
+
+    <!-- FINANCEIRO -->
+    <div id="aba-financeiro" class="tab-section">
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card"><div class="stat-label">Total investido</div><div class="stat-value" id="fin-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Por colaborador/mês</div><div class="stat-value">R$ 40</div></div>
+        <div class="stat-card"><div class="stat-label">Sessões custeadas</div><div class="stat-value" id="fin-sessoes">—</div></div>
+      </div>
+      <div class="card">
+        <h3>💳 Histórico de repasses</h3>
+        <div id="tabela-pagamentos"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- RELATÓRIOS -->
+    <div id="aba-relatorios" class="tab-section">
+      <div class="card">
+        <h3>📄 Relatórios disponíveis</h3>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:20px">Relatórios agregados e anonimizados — sem dados clínicos individuais.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-size:24px;margin-bottom:8px">📊</div>
+            <div style="font-weight:600;margin-bottom:4px">Impacto semestral</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Evolução agregada de sintomas</div>
+            <button onclick="gerarRelatorio('impacto')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-size:24px;margin-bottom:8px">💰</div>
+            <div style="font-weight:600;margin-bottom:4px">Extrato financeiro</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Repasses e investimentos</div>
+            <button onclick="gerarRelatorio('financeiro')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-size:24px;margin-bottom:8px">🏢</div>
+            <div style="font-weight:600;margin-bottom:4px">Adesão por departamento</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Engajamento por equipe</div>
+            <button onclick="gerarRelatorio('adesao')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-size:24px;margin-bottom:8px">🔒</div>
+            <div style="font-weight:600;margin-bottom:4px">Carta de privacidade</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Para enviar aos colaboradores</div>
+            <button onclick="gerarRelatorio('privacidade')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Baixar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let empresaId = null;
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+
+  const { data: usuario } = await db.from('empresas').select('*').eq('email', session.user.email).maybeSingle();
+  if (!usuario) { window.location.href = 'login.html'; return; }
+
+  const { data: empresa } = await db.from('empresas').select('*').eq('email', session.user.email).single();
+  if (empresa) {
+    empresaId = empresa.id;
+    document.getElementById('sidebar-empresa').textContent = empresa.nome || 'Empresa';
+    document.getElementById('user-nome').textContent = empresa.contato_rh || 'RH';
+    document.getElementById('avatar-inicial').textContent = (empresa.nome || 'E')[0].toUpperCase();
+  }
+
+  carregarVisaoGeral();
+}
+
+async function carregarVisaoGeral() {
+  await Promise.all([carregarStats(), carregarDepts(), carregarAlertas(), carregarChart()]);
+}
+
+async function carregarStats() {
+  const { data: colab } = await db.from('pacientes').select('id').eq('empresa_id', empresaId);
+  document.getElementById('stat-colab').textContent = colab?.length || 0;
+
+  const mes = new Date().toISOString().slice(0, 7);
+  const ids = colab?.map(c => c.id) || [];
+  if (!ids.length) { document.getElementById('stat-sessoes').textContent = 0; document.getElementById('stat-adesao').textContent = '—'; document.getElementById('stat-custo').textContent = 'R$0'; return; }
+
+  const { data: sessoes } = await db.from('sessoes').select('id, status').in('paciente_id', ids).gte('data_hora', mes + '-01');
+  document.getElementById('stat-sessoes').textContent = sessoes?.filter(s => s.status === 'realizada').length || 0;
+  
+  const total = sessoes?.length || 0;
+  const realizadas = sessoes?.filter(s => s.status === 'realizada').length || 0;
+  document.getElementById('stat-adesao').textContent = total ? Math.round(realizadas / total * 100) + '%' : '—';
+  document.getElementById('stat-custo').textContent = 'R$' + (realizadas * 40).toLocaleString('pt-BR');
+}
+
+async function carregarDepts() {
+  const { data: colab } = await db.from('pacientes').select('id, departamento').eq('empresa_id', empresaId);
+  const el = document.getElementById('dept-lista');
+  if (!colab?.length) { el.innerHTML = '<div class="loading">Sem dados</div>'; return; }
+
+  const depts = {};
+  colab.forEach(c => {
+    const d = c.departamento || 'Sem departamento';
+    if (!depts[d]) depts[d] = { total: 0, ativos: 0 };
+    depts[d].total++;
+    depts[d].ativos++;
+  });
+
+  el.innerHTML = Object.entries(depts).map(([nome, d]) => {
+    const pct = Math.round(d.ativos / d.total * 100);
+    return `<div class="dept-row">
+      <span class="dept-nome">${nome}</span>
+      <div class="dept-bar"><div class="dept-fill" style="width:${pct}%"></div></div>
+      <span class="dept-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+async function carregarAlertas() {
+  const el = document.getElementById('alertas-lista');
+  const { data: colab } = await db.from('pacientes').select('id').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  
+  const alertas = [];
+  
+  // Verifica renovação (simulado)
+  const renovacao = new Date();
+  renovacao.setMonth(renovacao.getMonth() + 1);
+  alertas.push({ icon: '📋', titulo: 'Renovação contratual', detalhe: `Vence em ${renovacao.toLocaleDateString('pt-BR')}` });
+
+  // Adesão baixa
+  if (ids.length) {
+    const { data: faltas } = await db.from('sessoes').select('paciente_id').in('paciente_id', ids).eq('status', 'falta');
+    if (faltas?.length > 3) alertas.push({ icon: '⚠️', titulo: 'Adesão abaixo do esperado', detalhe: `${faltas.length} faltas registradas` });
+  }
+
+  el.innerHTML = alertas.length ? alertas.map(a => `
+    <div class="alerta-item">
+      <span class="alerta-icon">${a.icon}</span>
+      <div class="alerta-texto"><div class="titulo">${a.titulo}</div><div class="detalhe">${a.detalhe}</div></div>
+    </div>`).join('') : '<div class="loading">✅ Sem alertas</div>';
+}
+
+async function carregarChart() {
+  const { data: colab } = await db.from('pacientes').select('id').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  if (!ids.length) return;
+
+  const { data } = await db.from('sessoes').select('data_hora').in('paciente_id', ids).order('data_hora');
+  const meses = {};
+  data?.forEach(s => { const m = s.data_hora?.slice(0, 7); if (m) meses[m] = (meses[m] || 0) + 1; });
+  const labels = Object.keys(meses).slice(-6);
+  const values = labels.map(m => meses[m]);
+
+  const ctx = document.getElementById('chart-sessoes');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels.map(m => { const [y, mo] = m.split('-'); return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(mo)-1] + '/' + y.slice(2); }),
+      datasets: [{ label: 'Sessões', data: values, backgroundColor: 'rgba(45,74,107,0.7)', borderRadius: 8 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#E2DED8' }, ticks: { color: '#6B7A8D' } }, y: { grid: { color: '#E2DED8' }, ticks: { color: '#6B7A8D' } } } }
+  });
+}
+
+async function carregarEquipe() {
+  const { data } = await db.from('pacientes').select('nome, departamento, total_sessoes, status').eq('empresa_id', empresaId).order('nome');
+  const el = document.getElementById('tabela-equipe');
+  if (!data?.length) { el.innerHTML = '<div class="loading">Nenhum colaborador vinculado</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr><th>Nome</th><th>Departamento</th><th>Sessões</th><th>Adesão</th><th>Status</th></tr></thead>
+    <tbody>${data.map(p => `
+      <tr>
+        <td><strong>${p.nome}</strong></td>
+        <td>${p.departamento || '—'}</td>
+        <td>${p.total_sessoes || 0}</td>
+        <td><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, (p.total_sessoes || 0) * 10)}%"></div></div></td>
+        <td><span class="badge ${p.status === 'ativo' ? 'ok' : 'inativo'}">${p.status || 'ativo'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function carregarFinanceiro() {
+  const { data: colab } = await db.from('pacientes').select('id').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  const { data } = ids.length ? await db.from('pagamentos').select('*, pacientes(nome)').in('paciente_id', ids).order('data_pagamento', { ascending: false }) : { data: [] };
+
+  const total = data?.reduce((s, p) => s + (p.valor_empresa || 40), 0) || 0;
+  document.getElementById('fin-total').textContent = 'R$' + total.toLocaleString('pt-BR');
+  document.getElementById('fin-sessoes').textContent = data?.length || 0;
+
+  const el = document.getElementById('tabela-pagamentos');
+  if (!data?.length) { el.innerHTML = '<div class="loading">Nenhum pagamento registrado</div>'; return; }
+  el.innerHTML = `<table>
+    <thead><tr><th>Data</th><th>Colaborador</th><th>Valor empresa</th><th>Status</th></tr></thead>
+    <tbody>${data.slice(0, 20).map(p => `
+      <tr>
+        <td>${p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${p.pacientes?.nome || '—'}</td>
+        <td>R$ ${(p.valor_empresa || 40).toFixed(2)}</td>
+        <td><span class="badge ${p.status_pagamento === 'pago' ? 'ok' : 'alerta'}">${p.status_pagamento || 'pendente'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function mostrarAba(nome, el) {
+  document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('aba-' + nome).classList.add('active');
+  el.classList.add('active');
+  const t = { visao: 'Visão Geral', equipe: 'Equipe', financeiro: 'Financeiro', relatorios: 'Relatórios' };
+  document.getElementById('titulo-pagina').textContent = t[nome] || '';
+  if (nome === 'equipe') carregarEquipe();
+  if (nome === 'financeiro') carregarFinanceiro();
+}
+
+function gerarRelatorio(tipo) { alert('Relatório "' + tipo + '" será gerado em breve. Funcionalidade de PDF em desenvolvimento.'); }
+
+async function sair() { await db.auth.signOut(); window.location.href = 'login.html'; }
+
+init();
+</script>
+</body>
+</html>

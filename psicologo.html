@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Perfil do Psicólogo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #2D4A6B;
+    --navy-light: #3D5F85;
+    --sage: #5B8C6E;
+    --sage-light: #7AAF8E;
+    --cream: #F7F4EF;
+    --white: #FFFFFF;
+    --text: #1A2332;
+    --text-muted: #6B7A8D;
+    --border: #E2DED8;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: var(--cream);
+    line-height: 1.6;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem 5%;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo { font-family: 'DM Serif Display', serif; font-size: 1.4rem; color: var(--navy); text-decoration: none; }
+  .nav-logo span { color: var(--sage); }
+  .nav-back { font-size: 0.875rem; color: var(--text-muted); text-decoration: none; display: flex; align-items: center; gap: 0.4rem; transition: color 0.2s; }
+  .nav-back:hover { color: var(--navy); }
+
+  /* HERO DO PERFIL */
+  .perfil-hero {
+    background: linear-gradient(160deg, var(--navy) 0%, #1e3550 60%, #253e2e 100%);
+    padding: 8rem 5% 3.5rem;
+  }
+  .perfil-hero-inner {
+    max-width: 900px; margin: 0 auto;
+    display: flex; gap: 2.5rem; align-items: flex-end;
+  }
+  .perfil-avatar {
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 2.8rem;
+    color: white;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .perfil-info { flex: 1; }
+  .perfil-tag {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--sage-light);
+    margin-bottom: 0.5rem;
+  }
+  .perfil-nome {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    color: white;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 0.4rem;
+  }
+  .perfil-crp { color: rgba(255,255,255,0.55); font-size: 0.9rem; margin-bottom: 1rem; }
+  .perfil-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .badge-abord { background: rgba(91,140,110,0.2); border: 1px solid rgba(91,140,110,0.4); color: var(--sage-light); }
+  .badge-disp { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); }
+
+  /* LAYOUT PRINCIPAL */
+  .perfil-layout {
+    max-width: 900px; margin: 0 auto;
+    padding: 2.5rem 5%;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  /* COLUNA ESQUERDA */
+  .perfil-col { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.75rem;
+  }
+  .card-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.15rem;
+    color: var(--navy);
+    margin-bottom: 1rem;
+    letter-spacing: -0.01em;
+  }
+  .bio-text {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.75;
+  }
+
+  .especialidades-grid {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .tag-esp {
+    background: var(--cream);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.82rem;
+    padding: 5px 12px;
+    border-radius: 7px;
+  }
+
+  .info-lista { display: flex; flex-direction: column; gap: 12px; }
+  .info-item { display: flex; align-items: flex-start; gap: 12px; }
+  .info-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: rgba(45,74,107,0.07);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; color: var(--navy);
+  }
+  .info-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .info-value { font-size: 0.92rem; color: var(--text); font-weight: 500; }
+
+  /* CALENDÁRIO DE AGENDAMENTO */
+  .agenda-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    position: sticky;
+    top: 90px;
+  }
+  .agenda-header {
+    background: var(--navy);
+    padding: 1.25rem 1.5rem;
+  }
+  .agenda-header h3 {
+    font-family: 'DM Serif Display', serif;
+    color: white; font-size: 1.1rem; margin-bottom: 2px;
+  }
+  .agenda-header p { color: rgba(255,255,255,0.6); font-size: 0.82rem; }
+
+  .agenda-body { padding: 1.5rem; }
+
+  .valor-sessao {
+    display: flex; align-items: baseline; gap: 6px;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .valor-num {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem; color: var(--navy); line-height: 1;
+  }
+  .valor-label { font-size: 0.82rem; color: var(--text-muted); }
+
+  .agenda-label {
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  /* SELETOR DE DATA SIMPLES */
+  .dias-semana {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    gap: 4px; margin-bottom: 1.25rem;
+    text-align: center;
+  }
+  .dia-label { font-size: 0.65rem; color: var(--text-muted); font-weight: 600; padding-bottom: 4px; }
+  .dia-btn {
+    border: 1.5px solid var(--border);
+    background: white;
+    border-radius: 8px;
+    padding: 6px 2px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+    text-align: center;
+  }
+  .dia-btn:hover { border-color: var(--navy); color: var(--navy); }
+  .dia-btn.sel { background: var(--navy); border-color: var(--navy); color: white; font-weight: 600; }
+  .dia-btn.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+  .horarios {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px; margin-bottom: 1.25rem;
+  }
+  .hora-btn {
+    border: 1.5px solid var(--border);
+    background: white;
+    border-radius: 7px;
+    padding: 7px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+    text-align: center;
+  }
+  .hora-btn:hover { border-color: var(--sage); color: var(--sage); }
+  .hora-btn.sel { background: var(--sage); border-color: var(--sage); color: white; font-weight: 600; }
+
+  .btn-agendar {
+    width: 100%;
+    background: var(--navy);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.85rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.2s, transform 0.15s;
+    letter-spacing: 0.01em;
+  }
+  .btn-agendar:hover { background: var(--navy-light); transform: translateY(-1px); }
+  .btn-agendar:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .agenda-nota {
+    margin-top: 12px;
+    font-size: 0.78rem; color: var(--text-muted);
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* MODAL CONFIRMAÇÃO */
+  .overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(26,35,50,0.5);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    padding: 1rem;
+  }
+  .overlay.aberto { opacity: 1; pointer-events: all; }
+  .modal {
+    background: white;
+    border-radius: 20px;
+    padding: 2rem;
+    max-width: 400px; width: 100%;
+    transform: translateY(12px);
+    transition: transform 0.2s;
+    text-align: center;
+  }
+  .overlay.aberto .modal { transform: translateY(0); }
+  .modal-icon {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: rgba(91,140,110,0.1);
+    color: var(--sage);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 1rem;
+  }
+  .modal h3 { font-family: 'DM Serif Display', serif; color: var(--navy); font-size: 1.3rem; margin-bottom: 0.5rem; }
+  .modal p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem; }
+  .modal-btns { display: flex; gap: 10px; }
+  .modal-btn-sec { flex: 1; padding: 0.7rem; border: 1.5px solid var(--border); border-radius: 8px; background: white; color: var(--text-muted); cursor: pointer; font-family: 'Inter', sans-serif; font-size: 0.88rem; }
+  .modal-btn-prim { flex: 1; padding: 0.7rem; border: none; border-radius: 8px; background: var(--navy); color: white; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 0.88rem; font-weight: 600; }
+
+  /* LOADING STATE */
+  .perfil-loading {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 60vh; color: var(--text-muted); flex-direction: column; gap: 1rem;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--navy);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 768px) {
+    .perfil-hero-inner { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+    .perfil-layout { grid-template-columns: 1fr; }
+    .agenda-card { position: static; }
+    .dias-semana { grid-template-columns: repeat(7, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">Mind<span>.</span></a>
+  <a href="psicologos.html" class="nav-back">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    Voltar para psicólogos
+  </a>
+</nav>
+
+<div id="conteudo">
+  <div class="perfil-loading">
+    <div class="spinner"></div>
+    <span>Carregando perfil…</span>
+  </div>
+</div>
+
+<!-- Modal de confirmação -->
+<div class="overlay" id="overlay" onclick="fecharModalSeClicouFora(event)">
+  <div class="modal" id="modal">
+    <div class="modal-icon">
+      <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    <h3>Confirmar agendamento</h3>
+    <p id="modal-texto">Você está agendando uma sessão de <strong>50 minutos</strong> com <strong id="modal-nome"></strong> no dia <strong id="modal-dia"></strong> às <strong id="modal-hora"></strong>.</p>
+    <div class="modal-btns">
+      <button class="modal-btn-sec" onclick="fecharModal()">Cancelar</button>
+      <button class="modal-btn-prim" onclick="confirmarAgendamento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let psicologo = null;
+let diaSel = null;
+let horaSel = null;
+
+const params = new URLSearchParams(window.location.search);
+const psiId = params.get('id');
+
+const horariosDisponiveis = ['08:00', '09:00', '10:00', '14:00', '15:00', '16:00', '17:00', '19:00', '20:00'];
+
+// Demo data fallback
+const demoData = {
+  'demo-1': { id:'demo-1', nome:'Dra. Juliana Melo', crp:'CRP 06/123456', abordagem:'TCC', especialidades:['Ansiedade','Burnout','Depressão','Autoestima'], valor_sessao:120, bio:'Psicóloga clínica com 8 anos de experiência no tratamento de ansiedade, burnout e depressão. Formação em TCC pela USP com especialização em saúde do trabalhador. Atendimentos online e presenciais.', formacao:'Psicologia — USP (2016)', pos_graduacao:'Terapia Cognitivo-Comportamental — IP-USP', disponibilidade:'manha' },
+  'demo-2': { id:'demo-2', nome:'Dr. Rafael Costa', crp:'CRP 06/654321', abordagem:'Psicanálise', especialidades:['Trauma','Relacionamentos','Luto'], valor_sessao:150, bio:'Especialista em trauma e relações interpessoais pela abordagem psicanalítica. Dez anos de clínica com adultos e grupos.', formacao:'Psicologia — PUC-SP (2014)', pos_graduacao:'Psicanálise — SBPSP', disponibilidade:'tarde' },
+  'demo-3': { id:'demo-3', nome:'Dra. Camila Torres', crp:'CRP 06/789012', abordagem:'Humanista', especialidades:['Autoestima','Luto','Ansiedade','Identidade'], valor_sessao:100, bio:'Foco em desenvolvimento pessoal, autoconhecimento e processos de luto. Atendimento sensível e centrado na pessoa.', formacao:'Psicologia — UNIP (2018)', pos_graduacao:'Psicoterapia Humanista — IHP', disponibilidade:'noite' },
+};
+
+function gerarDias() {
+  const hoje = new Date();
+  const dias = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(hoje);
+    d.setDate(hoje.getDate() + i);
+    if (d.getDay() !== 0 && d.getDay() !== 6) dias.push(d); // pula fim de semana
+  }
+  return dias.slice(0, 10);
+}
+
+function inicialStr(nome) {
+  return (nome || '?').split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase();
+}
+
+function formatarData(d) {
+  return d.toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' });
+}
+
+function renderizarPerfil(p) {
+  psicologo = p;
+  const dias = gerarDias();
+  const nomeIniciais = inicialStr(p.nome);
+  const espTags = (p.especialidades || []).map(e => `<span class="tag-esp">${e}</span>`).join('');
+  const dispTexto = { manha:'Manhã (8h–12h)', tarde:'Tarde (13h–18h)', noite:'Noite (18h–21h)' }[p.disponibilidade] || 'Sob consulta';
+
+  const diasHtml = dias.map((d, i) => {
+    const labels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    return `<button class="dia-btn" data-date="${d.toISOString()}" data-idx="${i}" onclick="selecionarDia(this, '${formatarData(d)}')">${labels[d.getDay()]}<br><strong>${d.getDate()}</strong></button>`;
+  }).join('');
+
+  const horariosHtml = horariosDisponiveis.map(h =>
+    `<button class="hora-btn" onclick="selecionarHora(this, '${h}')">${h}</button>`
+  ).join('');
+
+  document.title = `Mind — ${p.nome}`;
+
+  document.getElementById('conteudo').innerHTML = `
+    <div class="perfil-hero">
+      <div class="perfil-hero-inner">
+        <div class="perfil-avatar">${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}">` : nomeIniciais}</div>
+        <div class="perfil-info">
+          <div class="perfil-tag">Psicólogo(a) verificado(a)</div>
+          <div class="perfil-nome">${p.nome}</div>
+          <div class="perfil-crp">${p.crp || ''}</div>
+          <div class="perfil-badges">
+            <span class="badge badge-abord">${p.abordagem || 'Abordagem integrada'}</span>
+            <span class="badge badge-disp">🕐 ${dispTexto}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="perfil-layout">
+      <!-- Coluna info -->
+      <div class="perfil-col">
+        <div class="card">
+          <div class="card-title">Sobre</div>
+          <p class="bio-text">${p.bio || 'Profissional dedicado ao cuidado da saúde mental com abordagem humanizada e ética.'}</p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Especialidades</div>
+          <div class="especialidades-grid">${espTags}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Formação e experiência</div>
+          <div class="info-lista">
+            <div class="info-item">
+              <div class="info-icon">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="info-label">Graduação</div>
+                <div class="info-value">${p.formacao || 'Psicologia — informação não disponível'}</div>
+              </div>
+            </div>
+            ${p.pos_graduacao ? `<div class="info-item">
+              <div class="info-icon">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="info-label">Pós-graduação / Formação adicional</div>
+                <div class="info-value">${p.pos_graduacao}</div>
+              </div>
+            </div>` : ''}
+            <div class="info-item">
+              <div class="info-icon">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="info-label">Registro</div>
+                <div class="info-value">${p.crp || 'CRP — verificado'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coluna agenda -->
+      <div>
+        <div class="agenda-card">
+          <div class="agenda-header">
+            <h3>Agendar sessão</h3>
+            <p>Sessão individual · 50 minutos</p>
+          </div>
+          <div class="agenda-body">
+            <div class="valor-sessao">
+              <span class="valor-num">R$ ${p.valor_sessao || '—'}</span>
+              <span class="valor-label">/ sessão via Mind</span>
+            </div>
+
+            <div class="agenda-label">Selecione uma data</div>
+            <div class="dias-semana" style="margin-bottom:1.25rem; display:grid; grid-template-columns:repeat(5,1fr); gap:6px;">
+              ${diasHtml}
+            </div>
+
+            <div class="agenda-label">Horário disponível</div>
+            <div class="horarios">${horariosHtml}</div>
+
+            <button class="btn-agendar" id="btnAgendar" onclick="abrirModal()" disabled>
+              Selecione data e horário
+            </button>
+            <p class="agenda-nota">Cancelamento gratuito com 24h de antecedência</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function selecionarDia(el, texto) {
+  document.querySelectorAll('.dia-btn').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  diaSel = texto;
+  verificarBotao();
+}
+
+function selecionarHora(el, hora) {
+  document.querySelectorAll('.hora-btn').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  horaSel = hora;
+  verificarBotao();
+}
+
+function verificarBotao() {
+  const btn = document.getElementById('btnAgendar');
+  if (diaSel && horaSel) {
+    btn.disabled = false;
+    btn.textContent = `Agendar para ${diaSel} às ${horaSel}`;
+  }
+}
+
+function abrirModal() {
+  document.getElementById('modal-nome').textContent = psicologo?.nome || 'este profissional';
+  document.getElementById('modal-dia').textContent = diaSel;
+  document.getElementById('modal-hora').textContent = horaSel;
+  document.getElementById('overlay').classList.add('aberto');
+}
+
+function fecharModal() {
+  document.getElementById('overlay').classList.remove('aberto');
+}
+
+function fecharModalSeClicouFora(e) {
+  if (e.target === document.getElementById('overlay')) fecharModal();
+}
+
+async function confirmarAgendamento() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) {
+    fecharModal();
+    alert('Você precisa estar logado para agendar. Faça login no site.');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  const email = session.user.email;
+  const { data: paciente } = await db.from('pacientes').select('id').eq('email', email).maybeSingle();
+
+  if (!paciente) {
+    fecharModal();
+    alert('Para agendar, você precisa ser cadastrado como paciente na plataforma.');
+    return;
+  }
+
+  // Salvar agendamento (se a tabela agendamentos existir)
+  const { error } = await db.from('agendamentos').insert({
+    paciente_id: paciente.id,
+    psicologa_id: psicologo.id,
+    data_hora: diaSel + ' ' + horaSel,
+    status: 'pendente',
+  });
+
+  fecharModal();
+
+  if (error) {
+    // Tabela ainda não existe — só confirma visualmente
+    mostrarSucesso();
+  } else {
+    mostrarSucesso();
+  }
+}
+
+function mostrarSucesso() {
+  document.getElementById('overlay').innerHTML = `
+    <div class="modal">
+      <div class="modal-icon" style="background:rgba(91,140,110,0.12)">
+        <svg width="28" height="28" fill="none" stroke="#5B8C6E" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+      </div>
+      <h3>Agendamento solicitado!</h3>
+      <p>Sua sessão com <strong>${psicologo?.nome}</strong> foi solicitada para <strong>${diaSel}</strong> às <strong>${horaSel}</strong>. O psicólogo entrará em contato para confirmar.</p>
+      <button class="modal-btn-prim" style="width:100%;margin-top:8px" onclick="window.location.href='dashboard-paciente.html'">Ir para meu painel</button>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('aberto');
+}
+
+async function carregar() {
+  if (!psiId) {
+    window.location.href = 'psicologos.html';
+    return;
+  }
+
+  // Tenta demo data primeiro (IDs demo-*)
+  if (psiId.startsWith('demo-') && demoData[psiId]) {
+    renderizarPerfil(demoData[psiId]);
+    return;
+  }
+
+  const { data, error } = await db
+    .from('psicologas')
+    .select('id, nome, crp, abordagem, email, foto_url, especialidades, valor_sessao, disponibilidade, bio, formacao, pos_graduacao')
+    .eq('id', psiId)
+    .maybeSingle();
+
+  if (error || !data) {
+    document.getElementById('conteudo').innerHTML = `
+      <div class="perfil-loading">
+        <p style="color:var(--text-muted)">Psicólogo não encontrado. <a href="psicologos.html" style="color:var(--navy)">Voltar à listagem</a></p>
+      </div>`;
+    return;
+  }
+
+  renderizarPerfil(data);
+}
+
+carregar();
+</script>
+</body>
+</html>

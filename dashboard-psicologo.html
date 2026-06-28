@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Psicólogo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF;
+  --surface: #FFFFFF;
+  --surface2: #f0ece6;
+  --border: #E2DED8;
+  --navy: #2D4A6B;
+  --navy-light: #3D5F85;
+  --sage: #5B8C6E;
+  --sage-light: #7AAF8E;
+  --accent: #2D4A6B;
+  --accent2: #5B8C6E;
+  --text: #1A2332;
+  --muted: #6B7A8D;
+  --success: #5B8C6E;
+  --warning: #b45309;
+  --error: #b91c1c;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 24px 0; position: fixed; height: 100vh; overflow-y: auto;
+}
+.logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.logo-mark {
+  width: 40px; height: 40px; background: linear-gradient(135deg, var(--navy), var(--sage));
+  border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800; color: white; margin-bottom: 10px;
+}
+.logo h2 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--navy), var(--sage)); color: var(--navy); }
+.logo p { font-size: 12px; color: var(--muted); }
+nav a {
+  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
+  border-radius: 8px; margin: 2px 8px; transition: all 0.15s;
+}
+nav a:hover, nav a.active { background: var(--surface2); color: var(--text); }
+nav a.active { color: var(--navy); }
+.nav-icon { font-size: 18px; width: 22px; }
+.sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+.user-info { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--navy), var(--sage)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+.user-name { font-size: 13px; font-weight: 600; }
+.user-role { font-size: 11px; color: var(--muted); }
+.logout-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; margin-left: auto; }
+.logout-btn:hover { color: var(--error); }
+.main { margin-left: 240px; padding: 32px; flex: 1; }
+.page-header { margin-bottom: 28px; }
+.page-header h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.page-header p { color: var(--muted); font-size: 14px; }
+.tab-section { display: none; }
+.tab-section.active { display: block; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.stat-value { font-family: 'DM Serif Display', serif; font-size: 28px; font-weight: 700; }
+.stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+.agenda-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.agenda-item:last-child { border-bottom: none; }
+.hora { font-size: 13px; font-weight: 600; color: var(--navy); min-width: 48px; }
+.agenda-info .nome { font-size: 14px; font-weight: 500; }
+.agenda-info .detalhe { font-size: 12px; color: var(--muted); }
+.badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-left: auto; }
+.badge.ok { background: rgba(52,211,153,0.15); color: var(--success); }
+.badge.alerta { background: rgba(251,191,36,0.15); color: var(--warning); }
+.badge.falta { background: rgba(248,113,113,0.15); color: var(--error); }
+table { width: 100%; border-collapse: collapse; }
+thead th { text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 0 12px; font-weight: 500; }
+tbody td { padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+.progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; width: 100px; }
+.progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.link { color: var(--navy); text-decoration: none; font-size: 13px; }
+.link:hover { text-decoration: underline; }
+.loading { text-align: center; color: var(--muted); padding: 40px; font-size: 14px; }
+.empty { text-align: center; color: var(--muted); padding: 40px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">M</div>
+      <h2>Mind</h2>
+      <p id="sidebar-nome">Psicólogo</p>
+    </div>
+    <nav>
+      <a href="#" class="active" onclick="mostrarAba('visao', this)"><span class="nav-icon">🏠</span>Visão Geral</a>
+      <a href="#" onclick="mostrarAba('pacientes', this)"><span class="nav-icon">👥</span>Pacientes</a>
+      <a href="#" onclick="mostrarAba('agenda', this)"><span class="nav-icon">📅</span>Agenda</a>
+      <a href="#" onclick="mostrarAba('financeiro', this)"><span class="nav-icon">💰</span>Financeiro</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-info">
+        <div class="avatar" id="avatar-inicial">?</div>
+        <div><div class="user-name" id="user-nome">Carregando...</div><div class="user-role">Psicólogo</div></div>
+        <button class="logout-btn" onclick="sair()" title="Sair">⏏</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1 id="titulo-pagina">Visão Geral</h1>
+      <p id="subtitulo-pagina">Resumo da sua prática</p>
+    </div>
+
+    <!-- ABA: VISÃO GERAL -->
+    <div id="aba-visao" class="tab-section active">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Pacientes ativos</div>
+          <div class="stat-value" id="stat-pacientes">—</div>
+          <div class="stat-sub">em acompanhamento</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sessões este mês</div>
+          <div class="stat-value" id="stat-sessoes">—</div>
+          <div class="stat-sub">realizadas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Taxa de adesão</div>
+          <div class="stat-value" id="stat-adesao">—</div>
+          <div class="stat-sub">média geral</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Receita mensal</div>
+          <div class="stat-value" id="stat-receita">—</div>
+          <div class="stat-sub">a receber</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>📋 Próximas sessões hoje</h3>
+          <div id="lista-hoje"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="card">
+          <h3>⚠️ Alertas clínicos</h3>
+          <div id="lista-alertas"><div class="loading">Carregando...</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📊 Sessões por mês</h3>
+        <canvas id="chart-sessoes" height="80"></canvas>
+      </div>
+    </div>
+
+    <!-- ABA: PACIENTES -->
+    <div id="aba-pacientes" class="tab-section">
+      <div class="card">
+        <h3>👥 Todos os pacientes</h3>
+        <div id="tabela-pacientes"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- ABA: AGENDA -->
+    <div id="aba-agenda" class="tab-section">
+      <div class="card">
+        <h3>📅 Próximas sessões</h3>
+        <div id="lista-agenda"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- ABA: FINANCEIRO -->
+    <div id="aba-financeiro" class="tab-section">
+      <div class="stats-grid" style="grid-template-columns: repeat(3,1fr)">
+        <div class="stat-card">
+          <div class="stat-label">Total recebido</div>
+          <div class="stat-value" id="fin-recebido">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">A receber</div>
+          <div class="stat-value" id="fin-pendente">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sessões pagas</div>
+          <div class="stat-value" id="fin-pagas">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>💳 Histórico de pagamentos</h3>
+        <div id="tabela-pagamentos"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let userEmail = '';
+let psicologaId = null;
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+  userEmail = session.user.email;
+
+  // Busca dados do psicólogo
+  const { data: psi } = await db.from('psicologas').select('*').eq('email', userEmail).single();
+  if (psi) {
+    psicologaId = psi.id;
+    const nome = psi.nome || userEmail.split('@')[0];
+    document.getElementById('user-nome').textContent = nome;
+    document.getElementById('sidebar-nome').textContent = psi.crp || 'Psicólogo';
+    document.getElementById('avatar-inicial').textContent = nome[0].toUpperCase();
+  }
+
+  carregarDados();
+}
+
+async function carregarDados() {
+  await Promise.all([
+    carregarStats(),
+    carregarHoje(),
+    carregarAlertas(),
+    carregarChartSessoes()
+  ]);
+}
+
+async function carregarStats() {
+  const { data: pacientes } = await db.from('pacientes').select('id').eq('psicologa_id', psicologaId).eq('status', 'ativo');
+  document.getElementById('stat-pacientes').textContent = pacientes?.length || 0;
+
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const { data: sessoes } = await db.from('sessoes').select('id, valor_psicologa').eq('psicologa_id', psicologaId).gte('data_hora', mesAtual + '-01');
+  document.getElementById('stat-sessoes').textContent = sessoes?.length || 0;
+
+  const receita = sessoes?.reduce((s, i) => s + (i.valor_psicologa || 50), 0) || 0;
+  document.getElementById('stat-receita').textContent = 'R$' + receita.toLocaleString('pt-BR');
+
+  const { data: todas } = await db.from('sessoes').select('status').eq('psicologa_id', psicologaId);
+  if (todas?.length) {
+    const realizadas = todas.filter(s => s.status === 'realizada').length;
+    const pct = Math.round((realizadas / todas.length) * 100);
+    document.getElementById('stat-adesao').textContent = pct + '%';
+  } else {
+    document.getElementById('stat-adesao').textContent = '—';
+  }
+}
+
+async function carregarHoje() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologa_id', psicologaId).gte('data_hora', hoje + 'T00:00').lte('data_hora', hoje + 'T23:59').order('data_hora');
+
+  const el = document.getElementById('lista-hoje');
+  if (!data?.length) { el.innerHTML = '<div class="empty">Nenhuma sessão hoje</div>'; return; }
+
+  el.innerHTML = data.map(s => {
+    const hora = new Date(s.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const statusMap = { realizada: ['ok', 'Realizada'], agendada: ['alerta', 'Agendada'], falta: ['falta', 'Falta'] };
+    const [cls, label] = statusMap[s.status] || ['alerta', s.status];
+    return `<div class="agenda-item">
+      <span class="hora">${hora}</span>
+      <div class="agenda-info"><div class="nome">${s.pacientes?.nome || '—'}</div></div>
+      <span class="badge ${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+async function carregarAlertas() {
+  const el = document.getElementById('lista-alertas');
+  // Busca pacientes com >= 2 faltas no último mês
+  const { data: faltas } = await db.from('sessoes').select('paciente_id, pacientes(nome)').eq('psicologa_id', psicologaId).eq('status', 'falta');
+  
+  const contagem = {};
+  faltas?.forEach(f => {
+    const id = f.paciente_id;
+    if (!contagem[id]) contagem[id] = { nome: f.pacientes?.nome, qtd: 0 };
+    contagem[id].qtd++;
+  });
+
+  const alertas = Object.values(contagem).filter(a => a.qtd >= 2);
+  if (!alertas.length) { el.innerHTML = '<div class="empty">✅ Sem alertas no momento</div>'; return; }
+
+  el.innerHTML = alertas.map(a => `
+    <div class="agenda-item">
+      <span class="nav-icon">⚠️</span>
+      <div class="agenda-info">
+        <div class="nome">${a.nome}</div>
+        <div class="detalhe">${a.qtd} faltas registradas</div>
+      </div>
+    </div>`).join('');
+}
+
+async function carregarChartSessoes() {
+  const { data } = await db.from('sessoes').select('data_hora').eq('psicologa_id', psicologaId).order('data_hora');
+  const meses = {};
+  data?.forEach(s => {
+    const m = s.data_hora?.slice(0, 7);
+    if (m) meses[m] = (meses[m] || 0) + 1;
+  });
+  const labels = Object.keys(meses).slice(-6);
+  const values = labels.map(m => meses[m]);
+
+  const ctx = document.getElementById('chart-sessoes');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels.map(m => { const [y, mo] = m.split('-'); return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(mo)-1] + '/' + y.slice(2); }),
+      datasets: [{ label: 'Sessões', data: values, backgroundColor: 'rgba(45,74,107,0.7)', borderRadius: 8 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#E2DED8' }, ticks: { color: '#6B7A8D' } }, y: { grid: { color: '#E2DED8' }, ticks: { color: '#6B7A8D' } } } }
+  });
+}
+
+async function carregarPacientes() {
+  const { data } = await db.from('pacientes').select('id, nome, diagnostico_cid, total_sessoes, status').eq('psicologa_id', psicologaId).order('nome');
+  const el = document.getElementById('tabela-pacientes');
+  if (!data?.length) { el.innerHTML = '<div class="empty">Nenhum paciente cadastrado</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr><th>Nome</th><th>CID</th><th>Sessões</th><th>Status</th><th>Ação</th></tr></thead>
+    <tbody>${data.map(p => `
+      <tr>
+        <td><strong>${p.nome}</strong></td>
+        <td>${p.diagnostico_cid || '—'}</td>
+        <td>${p.total_sessoes || 0}</td>
+        <td><span class="badge ${p.status === 'ativo' ? 'ok' : 'falta'}">${p.status}</span></td>
+        <td><a class="link" href="paciente.html?id=${p.id}">Ver ficha →</a></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function carregarAgenda() {
+  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologa_id', psicologaId).gte('data_hora', new Date().toISOString()).order('data_hora').limit(20);
+  const el = document.getElementById('lista-agenda');
+  if (!data?.length) { el.innerHTML = '<div class="empty">Sem sessões agendadas</div>'; return; }
+
+  el.innerHTML = data.map(s => {
+    const dt = new Date(s.data_hora);
+    const data_fmt = dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+    const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="agenda-item">
+      <span class="hora" style="min-width:90px">${data_fmt}</span>
+      <span class="hora">${hora}</span>
+      <div class="agenda-info"><div class="nome">${s.pacientes?.nome || '—'}</div></div>
+      <span class="badge ${s.status === 'realizada' ? 'ok' : 'alerta'}">${s.status}</span>
+    </div>`;
+  }).join('');
+}
+
+async function carregarFinanceiro() {
+  const { data } = await db.from('pagamentos').select('*, sessoes(data_hora, pacientes(nome))').order('data_pagamento', { ascending: false });
+  
+  const recebido = data?.filter(p => p.status_pagamento === 'pago').reduce((s, p) => s + (p.valor_psicologa || 50), 0) || 0;
+  const pendente = data?.filter(p => p.status_pagamento !== 'pago').reduce((s, p) => s + (p.valor_psicologa || 50), 0) || 0;
+  const pagas = data?.filter(p => p.status_pagamento === 'pago').length || 0;
+
+  document.getElementById('fin-recebido').textContent = 'R$' + recebido.toLocaleString('pt-BR');
+  document.getElementById('fin-pendente').textContent = 'R$' + pendente.toLocaleString('pt-BR');
+  document.getElementById('fin-pagas').textContent = pagas;
+
+  const el = document.getElementById('tabela-pagamentos');
+  if (!data?.length) { el.innerHTML = '<div class="empty">Nenhum pagamento registrado</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr><th>Data</th><th>Paciente</th><th>Valor</th><th>Status</th></tr></thead>
+    <tbody>${data.slice(0, 20).map(p => `
+      <tr>
+        <td>${p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${p.sessoes?.pacientes?.nome || '—'}</td>
+        <td>R$ ${(p.valor_psicologa || 50).toFixed(2)}</td>
+        <td><span class="badge ${p.status_pagamento === 'pago' ? 'ok' : 'alerta'}">${p.status_pagamento || 'pendente'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function mostrarAba(nome, el) {
+  document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('aba-' + nome).classList.add('active');
+  el.classList.add('active');
+
+  const titulos = { visao: ['Visão Geral', 'Resumo da sua prática'], pacientes: ['Pacientes', 'Lista de pacientes em acompanhamento'], agenda: ['Agenda', 'Próximas sessões'], financeiro: ['Financeiro', 'Repasses e pagamentos'] };
+  const [t, s] = titulos[nome] || ['', ''];
+  document.getElementById('titulo-pagina').textContent = t;
+  document.getElementById('subtitulo-pagina').textContent = s;
+
+  if (nome === 'pacientes') carregarPacientes();
+  if (nome === 'agenda') carregarAgenda();
+  if (nome === 'financeiro') carregarFinanceiro();
+}
+
+async function sair() {
+  await db.auth.signOut();
+  window.location.href = 'login.html';
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Encontre seu Psicólogo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #2D4A6B;
+    --navy-light: #3D5F85;
+    --sage: #5B8C6E;
+    --sage-light: #7AAF8E;
+    --cream: #F7F4EF;
+    --white: #FFFFFF;
+    --text: #1A2332;
+    --text-muted: #6B7A8D;
+    --border: #E2DED8;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: var(--cream);
+    line-height: 1.6;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem 5%;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.4rem;
+    color: var(--navy);
+    text-decoration: none;
+    letter-spacing: -0.02em;
+  }
+  .nav-logo span { color: var(--sage); }
+  .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+  .nav-link {
+    font-size: 0.875rem; font-weight: 500;
+    color: var(--text-muted); text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-link:hover { color: var(--navy); }
+  .nav-cta {
+    background: var(--navy); color: white;
+    padding: 0.5rem 1.25rem; border-radius: 6px;
+    font-size: 0.875rem; font-weight: 500;
+    text-decoration: none; transition: background 0.2s;
+  }
+  .nav-cta:hover { background: var(--navy-light); }
+
+  /* HEADER */
+  .page-header {
+    background: linear-gradient(135deg, var(--navy) 0%, #1e3550 100%);
+    padding: 8rem 5% 4rem;
+    text-align: center;
+  }
+  .page-header-tag {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: rgba(91,140,110,0.9);
+    margin-bottom: 1rem;
+    display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+  }
+  .page-header-tag::before, .page-header-tag::after {
+    content: ''; width: 1.5rem; height: 1px; background: rgba(91,140,110,0.5);
+  }
+  .page-header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2rem, 4vw, 3rem);
+    color: white;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+  }
+  .page-header h1 em { font-style: italic; color: var(--sage-light); }
+  .page-header p {
+    color: rgba(255,255,255,0.65);
+    font-size: 1rem;
+    max-width: 48ch;
+    margin: 0 auto;
+  }
+
+  /* FILTROS */
+  .filtros-bar {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 1.25rem 5%;
+    position: sticky; top: 60px; z-index: 50;
+  }
+  .filtros-inner {
+    max-width: 1200px; margin: 0 auto;
+    display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+  }
+  .busca-wrap {
+    flex: 1; min-width: 220px; position: relative;
+  }
+  .busca-wrap svg {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-muted); pointer-events: none;
+  }
+  .busca-input {
+    width: 100%;
+    padding: 0.6rem 1rem 0.6rem 2.6rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text);
+    background: var(--cream);
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .busca-input:focus { border-color: var(--navy); }
+  .filtro-select {
+    padding: 0.6rem 1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--cream);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .filtro-select:focus { border-color: var(--navy); }
+  .filtro-count {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  /* GRID */
+  .listagem {
+    padding: 3rem 5%;
+  }
+  .listagem-inner {
+    max-width: 1200px; margin: 0 auto;
+  }
+  .grid-psi {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  /* CARD PSICÓLOGO */
+  .card-psi {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: box-shadow 0.25s, transform 0.2s;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+  .card-psi:hover {
+    box-shadow: 0 8px 32px rgba(45,74,107,0.12);
+    transform: translateY(-3px);
+  }
+  .card-banner {
+    height: 80px;
+    background: linear-gradient(135deg, var(--navy), #1e3550);
+    position: relative;
+  }
+  .card-avatar {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    border: 3px solid white;
+    background: var(--cream);
+    position: absolute;
+    bottom: -36px; left: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.6rem;
+    color: var(--navy);
+    overflow: hidden;
+  }
+  .card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .card-badge-online {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(91,140,110,0.15);
+    border: 1px solid var(--sage-light);
+    color: var(--sage);
+    font-size: 0.7rem; font-weight: 600;
+    padding: 2px 10px; border-radius: 20px;
+    letter-spacing: 0.04em;
+  }
+  .card-body {
+    padding: 44px 24px 24px;
+  }
+  .card-nome {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.2rem;
+    color: var(--navy);
+    margin-bottom: 2px;
+    letter-spacing: -0.01em;
+  }
+  .card-crp {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+  .card-abordagem {
+    display: inline-block;
+    background: rgba(91,140,110,0.1);
+    color: var(--sage);
+    font-size: 0.78rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 6px;
+    letter-spacing: 0.03em;
+    margin-bottom: 12px;
+  }
+  .card-especialidades {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 16px;
+  }
+  .tag-esp {
+    background: var(--cream);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    padding: 3px 9px; border-radius: 5px;
+  }
+  .card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .card-valor {
+    font-size: 0.82rem; color: var(--text-muted);
+  }
+  .card-valor strong {
+    font-size: 1rem;
+    color: var(--navy);
+    font-weight: 600;
+    display: block;
+  }
+  .card-btn {
+    background: var(--navy);
+    color: white;
+    padding: 0.45rem 1rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+  .card-btn:hover { background: var(--navy-light); }
+
+  /* VAZIO */
+  .vazio {
+    text-align: center;
+    padding: 5rem 1rem;
+    color: var(--text-muted);
+  }
+  .vazio svg { margin: 0 auto 1.5rem; opacity: 0.3; }
+  .vazio p { font-size: 1rem; }
+
+  /* LOADING */
+  .loading-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+  .skeleton {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    height: 260px;
+  }
+  .skeleton-banner {
+    height: 80px;
+    background: linear-gradient(90deg, #e8e4df 25%, #f0ece8 50%, #e8e4df 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  .skeleton-body { padding: 44px 24px 24px; }
+  .skeleton-line {
+    height: 14px; border-radius: 6px; margin-bottom: 10px;
+    background: linear-gradient(90deg, #e8e4df 25%, #f0ece8 50%, #e8e4df 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  .skeleton-line.w60 { width: 60%; }
+  .skeleton-line.w40 { width: 40%; }
+  .skeleton-line.w80 { width: 80%; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* FOOTER */
+  footer {
+    background: var(--navy);
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 2rem 5%;
+    font-size: 0.82rem;
+    margin-top: 4rem;
+  }
+  footer strong { color: rgba(255,255,255,0.85); }
+
+  @media (max-width: 768px) {
+    .filtros-inner { flex-direction: column; align-items: stretch; }
+    .filtro-count { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">Mind<span>.</span></a>
+  <div class="nav-right">
+    <a href="psicologos.html" class="nav-link" style="color:var(--navy); font-weight:600">Psicólogos</a>
+    <a href="index.html#como-funciona" class="nav-link">Como funciona</a>
+    <a href="index.html" class="nav-cta" onclick="abrirLogin(event)">Entrar</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-tag">Rede de profissionais</div>
+  <h1>Encontre seu <em>psicólogo</em></h1>
+  <p>Profissionais verificados, prontos para acolher você com escuta qualificada e cuidado contínuo.</p>
+</div>
+
+<div class="filtros-bar">
+  <div class="filtros-inner">
+    <div class="busca-wrap">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input type="text" class="busca-input" id="busca" placeholder="Buscar por nome ou especialidade…" oninput="filtrar()">
+    </div>
+    <select class="filtro-select" id="filtroAbordagem" onchange="filtrar()">
+      <option value="">Todas as abordagens</option>
+      <option>TCC</option>
+      <option>Psicanálise</option>
+      <option>Humanista</option>
+      <option>Gestalt</option>
+      <option>EMDR</option>
+      <option>ACT</option>
+    </select>
+    <select class="filtro-select" id="filtroDisp" onchange="filtrar()">
+      <option value="">Qualquer horário</option>
+      <option value="manha">Manhã</option>
+      <option value="tarde">Tarde</option>
+      <option value="noite">Noite</option>
+    </select>
+    <span class="filtro-count" id="contagem"></span>
+  </div>
+</div>
+
+<div class="listagem">
+  <div class="listagem-inner">
+    <div id="grid" class="loading-grid">
+      <!-- skeletons enquanto carrega -->
+      ${Array(6).fill(`<div class="skeleton"><div class="skeleton-banner"></div><div class="skeleton-body"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div></div></div>`).join('')}
+    </div>
+  </div>
+</div>
+
+<footer>
+  <strong>Mind</strong> — Saúde mental no trabalho · <a href="index.html" style="color:rgba(255,255,255,0.5)">Início</a>
+</footer>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let todosOsPsis = [];
+
+// Dados de demo para preencher campos que talvez não existam no banco ainda
+const demoExtra = {
+  especialidades: ['Ansiedade', 'Burnout', 'Relacionamentos', 'Depressão', 'Trauma', 'Autoestima'],
+  disponibilidade: ['manha', 'tarde', 'noite'],
+};
+function rng(seed, arr) { return arr[seed % arr.length]; }
+
+async function carregar() {
+  const { data, error } = await db
+    .from('psicologas')
+    .select('id, nome, crp, abordagem, email, foto_url, especialidades, valor_sessao, disponibilidade, bio')
+    .order('nome');
+
+  if (error || !data || data.length === 0) {
+    // Dados de demonstração se o banco estiver vazio ou sem dados extras
+    todosOsPsis = gerarDemoData();
+  } else {
+    todosOsPsis = data.map((p, i) => ({
+      ...p,
+      especialidades: p.especialidades || gerarEsp(i),
+      valor_sessao: p.valor_sessao || null,
+      disponibilidade: p.disponibilidade || rng(i, demoExtra.disponibilidade),
+      bio: p.bio || '',
+    }));
+  }
+
+  renderizar(todosOsPsis);
+}
+
+function gerarEsp(seed) {
+  const todas = ['Ansiedade', 'Burnout', 'Depressão', 'Luto', 'Relacionamentos', 'Trauma', 'Autoestima', 'TDAH'];
+  const qtd = 2 + (seed % 3);
+  return todas.slice(seed % 5, seed % 5 + qtd);
+}
+
+function gerarDemoData() {
+  return [
+    { id: 'demo-1', nome: 'Dra. Juliana Melo', crp: 'CRP 06/123456', abordagem: 'TCC', especialidades: ['Ansiedade', 'Burnout', 'Depressão'], valor_sessao: 120, disponibilidade: 'manha', bio: 'Psicóloga clínica com 8 anos de experiência.' },
+    { id: 'demo-2', nome: 'Dr. Rafael Costa', crp: 'CRP 06/654321', abordagem: 'Psicanálise', especialidades: ['Trauma', 'Relacionamentos'], valor_sessao: 150, disponibilidade: 'tarde', bio: 'Especialista em trauma e relações interpessoais.' },
+    { id: 'demo-3', nome: 'Dra. Camila Torres', crp: 'CRP 06/789012', abordagem: 'Humanista', especialidades: ['Autoestima', 'Luto', 'Ansiedade'], valor_sessao: 100, disponibilidade: 'noite', bio: 'Foco em desenvolvimento pessoal e autoconhecimento.' },
+    { id: 'demo-4', nome: 'Dr. André Vieira', crp: 'CRP 06/234567', abordagem: 'ACT', especialidades: ['TDAH', 'Burnout'], valor_sessao: 130, disponibilidade: 'manha', bio: 'Abordagem baseada em valores e mindfulness.' },
+    { id: 'demo-5', nome: 'Dra. Mariana Luz', crp: 'CRP 06/345678', abordagem: 'EMDR', especialidades: ['Trauma', 'Ansiedade', 'Depressão'], valor_sessao: 160, disponibilidade: 'tarde', bio: 'Especialista em EMDR para trauma e fobias.' },
+    { id: 'demo-6', nome: 'Dra. Beatriz Nunes', crp: 'CRP 06/456789', abordagem: 'Gestalt', especialidades: ['Relacionamentos', 'Autoestima'], valor_sessao: 110, disponibilidade: 'noite', bio: 'Psicóloga gestáltica com ênfase em presença e contato.' },
+  ];
+}
+
+function inicialStr(nome) {
+  return (nome || '?').split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase();
+}
+
+function renderizar(lista) {
+  const grid = document.getElementById('grid');
+  document.getElementById('contagem').textContent = `${lista.length} profissional${lista.length !== 1 ? 'is' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
+
+  if (lista.length === 0) {
+    grid.innerHTML = `<div class="vazio" style="grid-column:1/-1">
+      <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <p>Nenhum psicólogo encontrado com esses filtros.</p>
+    </div>`;
+    return;
+  }
+
+  grid.className = 'grid-psi';
+  grid.innerHTML = lista.map(p => {
+    const iniciais = inicialStr(p.nome);
+    const valor = p.valor_sessao ? `<strong>R$ ${p.valor_sessao}/sessão</strong>` : `<strong>A consultar</strong>`;
+    const espTags = (p.especialidades || []).slice(0,3).map(e => `<span class="tag-esp">${e}</span>`).join('');
+    return `
+    <a href="psicologo.html?id=${p.id}" class="card-psi">
+      <div class="card-banner">
+        <div class="card-avatar">${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}">` : iniciais}</div>
+        <span class="card-badge-online">Disponível</span>
+      </div>
+      <div class="card-body">
+        <div class="card-nome">${p.nome || 'Psicólogo'}</div>
+        <div class="card-crp">${p.crp || ''}</div>
+        <span class="card-abordagem">${p.abordagem || 'Abordagem integrada'}</span>
+        <div class="card-especialidades">${espTags}</div>
+        <div class="card-footer">
+          <div class="card-valor">${valor}<span style="font-size:0.75rem">via Mind</span></div>
+          <span class="card-btn">Ver perfil</span>
+        </div>
+      </div>
+    </a>`;
+  }).join('');
+}
+
+function filtrar() {
+  const busca = document.getElementById('busca').value.toLowerCase();
+  const abordagem = document.getElementById('filtroAbordagem').value;
+  const disp = document.getElementById('filtroDisp').value;
+
+  const filtrado = todosOsPsis.filter(p => {
+    const texto = `${p.nome || ''} ${(p.especialidades || []).join(' ')} ${p.abordagem || ''}`.toLowerCase();
+    const okBusca = !busca || texto.includes(busca);
+    const okAbord = !abordagem || p.abordagem === abordagem;
+    const okDisp = !disp || p.disponibilidade === disp;
+    return okBusca && okAbord && okDisp;
+  });
+
+  renderizar(filtrado);
+}
+
+function abrirLogin(e) {
+  e.preventDefault();
+  window.location.href = 'index.html#login';
+}
+
+carregar();
+</script>
+</body>
+</html>
