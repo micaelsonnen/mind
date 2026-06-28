@@ -391,7 +391,7 @@ function rng(seed, arr) { return arr[seed % arr.length]; }
 
 async function carregar() {
   const { data, error } = await db
-    .from('psicologas')
+    .from('psicologos')
     .select('id, nome, crp, abordagem, email, foto_url, especialidades, valor_sessao, disponibilidade, bio')
     .order('nome');
 

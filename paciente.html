@@ -333,7 +333,7 @@ async function salvarSessao() {
 
   const { data: sessaoData, error } = await db.from('sessoes').insert({
     paciente_id: pacienteId,
-    psicologa_id: paciente.psicologa_id,
+    psicologo_id: paciente.psicologo_id,
     data_hora: dataHora,
     status,
     resumo_sessao: resumo,

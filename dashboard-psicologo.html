@@ -205,7 +205,7 @@ const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let userEmail = '';
-let psicologaId = null;
+let psicologoId = null;
 
 async function init() {
   const { data: { session } } = await db.auth.getSession();
@@ -213,9 +213,9 @@ async function init() {
   userEmail = session.user.email;
 
   // Busca dados do psicólogo
-  const { data: psi } = await db.from('psicologas').select('*').eq('email', userEmail).single();
+  const { data: psi } = await db.from('psicologos').select('*').eq('email', userEmail).single();
   if (psi) {
-    psicologaId = psi.id;
+    psicologoId = psi.id;
     const nome = psi.nome || userEmail.split('@')[0];
     document.getElementById('user-nome').textContent = nome;
     document.getElementById('sidebar-nome').textContent = psi.crp || 'Psicólogo';
@@ -235,17 +235,17 @@ async function carregarDados() {
 }
 
 async function carregarStats() {
-  const { data: pacientes } = await db.from('pacientes').select('id').eq('psicologa_id', psicologaId).eq('status', 'ativo');
+  const { data: pacientes } = await db.from('pacientes').select('id').eq('psicologo_id', psicologoId).eq('status', 'ativo');
   document.getElementById('stat-pacientes').textContent = pacientes?.length || 0;
 
   const mesAtual = new Date().toISOString().slice(0, 7);
-  const { data: sessoes } = await db.from('sessoes').select('id, valor_psicologa').eq('psicologa_id', psicologaId).gte('data_hora', mesAtual + '-01');
+  const { data: sessoes } = await db.from('sessoes').select('id, valor_psicologo').eq('psicologo_id', psicologoId).gte('data_hora', mesAtual + '-01');
   document.getElementById('stat-sessoes').textContent = sessoes?.length || 0;
 
-  const receita = sessoes?.reduce((s, i) => s + (i.valor_psicologa || 50), 0) || 0;
+  const receita = sessoes?.reduce((s, i) => s + (i.valor_psicologo || 50), 0) || 0;
   document.getElementById('stat-receita').textContent = 'R$' + receita.toLocaleString('pt-BR');
 
-  const { data: todas } = await db.from('sessoes').select('status').eq('psicologa_id', psicologaId);
+  const { data: todas } = await db.from('sessoes').select('status').eq('psicologo_id', psicologoId);
   if (todas?.length) {
     const realizadas = todas.filter(s => s.status === 'realizada').length;
     const pct = Math.round((realizadas / todas.length) * 100);
@@ -257,7 +257,7 @@ async function carregarStats() {
 
 async function carregarHoje() {
   const hoje = new Date().toISOString().slice(0, 10);
-  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologa_id', psicologaId).gte('data_hora', hoje + 'T00:00').lte('data_hora', hoje + 'T23:59').order('data_hora');
+  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologo_id', psicologoId).gte('data_hora', hoje + 'T00:00').lte('data_hora', hoje + 'T23:59').order('data_hora');
 
   const el = document.getElementById('lista-hoje');
   if (!data?.length) { el.innerHTML = '<div class="empty">Nenhuma sessão hoje</div>'; return; }
@@ -277,7 +277,7 @@ async function carregarHoje() {
 async function carregarAlertas() {
   const el = document.getElementById('lista-alertas');
   // Busca pacientes com >= 2 faltas no último mês
-  const { data: faltas } = await db.from('sessoes').select('paciente_id, pacientes(nome)').eq('psicologa_id', psicologaId).eq('status', 'falta');
+  const { data: faltas } = await db.from('sessoes').select('paciente_id, pacientes(nome)').eq('psicologo_id', psicologoId).eq('status', 'falta');
   
   const contagem = {};
   faltas?.forEach(f => {
@@ -300,7 +300,7 @@ async function carregarAlertas() {
 }
 
 async function carregarChartSessoes() {
-  const { data } = await db.from('sessoes').select('data_hora').eq('psicologa_id', psicologaId).order('data_hora');
+  const { data } = await db.from('sessoes').select('data_hora').eq('psicologo_id', psicologoId).order('data_hora');
   const meses = {};
   data?.forEach(s => {
     const m = s.data_hora?.slice(0, 7);
@@ -322,7 +322,7 @@ async function carregarChartSessoes() {
 }
 
 async function carregarPacientes() {
-  const { data } = await db.from('pacientes').select('id, nome, diagnostico_cid, total_sessoes, status').eq('psicologa_id', psicologaId).order('nome');
+  const { data } = await db.from('pacientes').select('id, nome, diagnostico_cid, total_sessoes, status').eq('psicologo_id', psicologoId).order('nome');
   const el = document.getElementById('tabela-pacientes');
   if (!data?.length) { el.innerHTML = '<div class="empty">Nenhum paciente cadastrado</div>'; return; }
 
@@ -340,7 +340,7 @@ async function carregarPacientes() {
 }
 
 async function carregarAgenda() {
-  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologa_id', psicologaId).gte('data_hora', new Date().toISOString()).order('data_hora').limit(20);
+  const { data } = await db.from('sessoes').select('data_hora, status, pacientes(nome)').eq('psicologo_id', psicologoId).gte('data_hora', new Date().toISOString()).order('data_hora').limit(20);
   const el = document.getElementById('lista-agenda');
   if (!data?.length) { el.innerHTML = '<div class="empty">Sem sessões agendadas</div>'; return; }
 
@@ -360,8 +360,8 @@ async function carregarAgenda() {
 async function carregarFinanceiro() {
   const { data } = await db.from('pagamentos').select('*, sessoes(data_hora, pacientes(nome))').order('data_pagamento', { ascending: false });
   
-  const recebido = data?.filter(p => p.status_pagamento === 'pago').reduce((s, p) => s + (p.valor_psicologa || 50), 0) || 0;
-  const pendente = data?.filter(p => p.status_pagamento !== 'pago').reduce((s, p) => s + (p.valor_psicologa || 50), 0) || 0;
+  const recebido = data?.filter(p => p.status_pagamento === 'pago').reduce((s, p) => s + (p.valor_psicologo || 50), 0) || 0;
+  const pendente = data?.filter(p => p.status_pagamento !== 'pago').reduce((s, p) => s + (p.valor_psicologo || 50), 0) || 0;
   const pagas = data?.filter(p => p.status_pagamento === 'pago').length || 0;
 
   document.getElementById('fin-recebido').textContent = 'R$' + recebido.toLocaleString('pt-BR');
@@ -377,7 +377,7 @@ async function carregarFinanceiro() {
       <tr>
         <td>${p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString('pt-BR') : '—'}</td>
         <td>${p.sessoes?.pacientes?.nome || '—'}</td>
-        <td>R$ ${(p.valor_psicologa || 50).toFixed(2)}</td>
+        <td>R$ ${(p.valor_psicologo || 50).toFixed(2)}</td>
         <td><span class="badge ${p.status_pagamento === 'pago' ? 'ok' : 'alerta'}">${p.status_pagamento || 'pendente'}</span></td>
       </tr>`).join('')}
     </tbody></table>`;

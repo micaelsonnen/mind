@@ -206,7 +206,7 @@ async function redirecionarPorPerfil(user) {
   const email = user.email;
 
   // 1. Checa se é psicóloga
-  const { data: psi } = await db.from('psicologas').select('id').eq('email', email).maybeSingle();
+  const { data: psi } = await db.from('psicologos').select('id').eq('email', email).maybeSingle();
   if (psi) { window.location.href = 'dashboard-psicologo.html'; return; }
 
   // 2. Checa se é empresa

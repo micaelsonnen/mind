@@ -556,7 +556,7 @@ async function confirmarAgendamento() {
   // Salvar agendamento (se a tabela agendamentos existir)
   const { error } = await db.from('agendamentos').insert({
     paciente_id: paciente.id,
-    psicologa_id: psicologo.id,
+    psicologo_id: psicologo.id,
     data_hora: diaSel + ' ' + horaSel,
     status: 'pendente',
   });
@@ -598,7 +598,7 @@ async function carregar() {
   }
 
   const { data, error } = await db
-    .from('psicologas')
+    .from('psicologos')
     .select('id, nome, crp, abordagem, email, foto_url, especialidades, valor_sessao, disponibilidade, bio, formacao, pos_graduacao')
     .eq('id', psiId)
     .maybeSingle();
