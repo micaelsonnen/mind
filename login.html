@@ -1,252 +1,453 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mind — Entrar</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Entrar — MeuPsi</title>
+<meta name="description" content="Acesse sua conta MeuPsi e gerencie seus pacientes." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Fraunces:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --border: #2a2d3a;
-    --accent: #6c8fff;
-    --accent2: #a78bfa;
-    --text: #e8eaf0;
-    --muted: #8b8fa8;
-    --error: #f87171;
-    --success: #34d399;
-  }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Inter', system-ui, sans-serif;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .container {
-    width: 100%;
-    max-width: 420px;
-  }
-  .logo {
-    text-align: center;
-    margin-bottom: 40px;
-  }
-  .logo-mark {
-    width: 56px;
-    height: 56px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    font-weight: 800;
-    color: white;
-    margin-bottom: 16px;
-    letter-spacing: -1px;
-  }
-  .logo h1 {
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .logo p {
-    color: var(--muted);
-    font-size: 14px;
-    margin-top: 4px;
-  }
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 36px;
-  }
-  .card h2 {
-    font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 6px;
-  }
-  .card .subtitle {
-    color: var(--muted);
-    font-size: 14px;
-    margin-bottom: 28px;
-  }
-  .field {
-    margin-bottom: 18px;
-  }
-  label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--muted);
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  input {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 16px;
-    color: var(--text);
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus { border-color: var(--accent); }
-  .btn {
-    width: 100%;
-    padding: 14px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-    margin-top: 8px;
-  }
-  .btn:hover { opacity: 0.9; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .msg {
-    margin-top: 16px;
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-size: 14px;
-    display: none;
-  }
-  .msg.error { background: rgba(248,113,113,0.1); color: var(--error); border: 1px solid rgba(248,113,113,0.2); }
-  .msg.success { background: rgba(52,211,153,0.1); color: var(--success); border: 1px solid rgba(52,211,153,0.2); }
-  .msg.show { display: block; }
-  .forgot {
-    text-align: right;
-    margin-top: 10px;
-  }
-  .forgot a {
-    color: var(--accent);
-    font-size: 13px;
-    text-decoration: none;
-  }
-  .back {
-    text-align: center;
-    margin-top: 24px;
-  }
-  .back a {
-    color: var(--muted);
-    font-size: 13px;
-    text-decoration: none;
-  }
-  .back a:hover { color: var(--text); }
-  .spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    vertical-align: middle;
-    margin-right: 6px;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+:root {
+  --lila-50:  #F5F0FB;
+  --lila-100: #E8DCFA;
+  --lila-300: #C4A8F0;
+  --lila-500: #9B6FD8;
+  --lila-700: #6B3FA8;
+  --lila-900: #3B1E62;
+  --verde-400: #4CAF7D;
+  --verde-500: #3A9E6A;
+  --verde-600: #2D8055;
+  --verde-50:  #EBF7F1;
+  --cream:    #FDFBF8;
+  --gray-100: #F0EDE8;
+  --gray-300: #C8C4BC;
+  --gray-500: #8A8680;
+  --gray-800: #2E2C29;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; height: 100%; }
+body {
+  font-family: var(--font-body);
+  color: var(--gray-800);
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+a { text-decoration: none; color: inherit; }
+
+/* ── LADO ESQUERDO — ilustração ── */
+.side-left {
+  background: linear-gradient(160deg, var(--lila-900) 0%, var(--lila-700) 100%);
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5rem;
+  position: relative; overflow: hidden;
+}
+.side-left::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='600' height='700' viewBox='0 0 600 700' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='500' cy='100' r='260' fill='white' fill-opacity='0.03'/%3E%3Ccircle cx='100' cy='600' r='200' fill='white' fill-opacity='0.04'/%3E%3Ccircle cx='300' cy='350' r='180' fill='white' fill-opacity='0.02'/%3E%3C/svg%3E") no-repeat center/cover;
+}
+.side-logo {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 400; font-style: italic;
+  color: #fff; position: relative; z-index: 1;
+}
+.side-logo span { color: var(--verde-400); font-style: normal; }
+
+.side-content {
+  position: relative; z-index: 1;
+  padding-bottom: 2rem;
+}
+.side-content h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 2.5vw, 2.2rem);
+  font-weight: 300; color: #fff;
+  line-height: 1.25; margin-bottom: 1rem;
+}
+.side-content p {
+  font-size: 15px; color: rgba(255,255,255,0.65);
+  max-width: 360px; line-height: 1.7;
+}
+
+.depoimento {
+  position: relative; z-index: 1;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+}
+.depoimento p {
+  font-size: 14px; color: rgba(255,255,255,0.8);
+  font-style: italic; line-height: 1.6; margin-bottom: 0.75rem;
+}
+.depoimento-autor { display: flex; align-items: center; gap: 10px; }
+.dep-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--lila-500);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 500; color: #fff; flex-shrink: 0;
+}
+.dep-nome { font-size: 13px; font-weight: 500; color: #fff; }
+.dep-crp  { font-size: 12px; color: rgba(255,255,255,0.45); }
+
+/* ── LADO DIREITO — formulário ── */
+.side-right {
+  background: var(--cream);
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  padding: 3rem 2rem;
+  min-height: 100vh;
+}
+
+.form-box {
+  width: 100%; max-width: 400px;
+}
+
+.form-header { margin-bottom: 2rem; }
+.form-header h1 {
+  font-family: var(--font-display);
+  font-size: 1.8rem; font-weight: 300;
+  color: var(--lila-900); margin-bottom: 0.25rem;
+}
+.form-header p { font-size: 14px; color: var(--gray-500); }
+
+/* TABS LOGIN / RECUPERAR */
+.form-tabs {
+  display: flex; gap: 0;
+  border-bottom: 2px solid var(--lila-100);
+  margin-bottom: 1.75rem;
+}
+.form-tab {
+  flex: 1; text-align: center;
+  padding: 0.6rem 0; font-size: 14px; font-weight: 500;
+  color: var(--gray-500); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: all 0.15s;
+}
+.form-tab.ativo { color: var(--lila-700); border-bottom-color: var(--lila-500); }
+
+/* CAMPOS */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.1rem; }
+label { font-size: 13px; font-weight: 500; color: var(--gray-800); }
+.input-wrap { position: relative; }
+input[type="email"],
+input[type="password"],
+input[type="text"] {
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid var(--gray-300); border-radius: var(--radius-sm);
+  font-family: var(--font-body); font-size: 14px; color: var(--gray-800);
+  background: #fff; outline: none; transition: border-color 0.18s;
+}
+input:focus { border-color: var(--lila-500); box-shadow: 0 0 0 3px rgba(155,111,216,0.08); }
+.input-icon {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--gray-300); cursor: pointer; transition: color 0.15s;
+  background: none; border: none; padding: 0; display: flex; align-items: center;
+}
+.input-icon:hover { color: var(--lila-700); }
+
+.forgot {
+  text-align: right; margin-top: -0.5rem; margin-bottom: 1.1rem;
+}
+.forgot a {
+  font-size: 13px; color: var(--gray-500); transition: color 0.15s;
+}
+.forgot a:hover { color: var(--lila-700); }
+
+/* BOTÃO */
+.btn-primary {
+  width: 100%; padding: 0.85rem;
+  background: var(--lila-700); color: #fff;
+  border: none; border-radius: var(--radius-pill);
+  font-family: var(--font-body); font-size: 15px; font-weight: 500;
+  cursor: pointer; transition: background 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-primary:hover { background: var(--lila-900); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* FEEDBACK */
+.feedback {
+  padding: 0.75rem 1rem; border-radius: var(--radius-sm);
+  font-size: 13px; margin-bottom: 1rem; display: none;
+}
+.feedback.erro   { background: #FEE2E2; color: #991B1B; }
+.feedback.sucesso { background: var(--verde-50); color: var(--verde-600); }
+
+/* DIVIDER */
+.divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 1.5rem 0; color: var(--gray-300); font-size: 13px;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--gray-100);
+}
+
+/* CADASTRO LINK */
+.cadastro-link {
+  text-align: center; margin-top: 1.5rem;
+  font-size: 14px; color: var(--gray-500);
+}
+.cadastro-link a { color: var(--lila-700); font-weight: 500; }
+.cadastro-link a:hover { text-decoration: underline; }
+
+/* PAINEL RECUPERAR */
+.panel { display: none; }
+.panel.ativo { display: block; }
+
+/* RODAPÉ */
+.side-right-footer {
+  margin-top: 2.5rem; text-align: center;
+  font-size: 12px; color: var(--gray-300);
+}
+.side-right-footer a { color: var(--gray-300); }
+.side-right-footer a:hover { color: var(--lila-700); }
+
+/* MOBILE */
+@media (max-width: 720px) {
+  body { grid-template-columns: 1fr; }
+  .side-left { display: none; }
+  .side-right { padding: 2rem 1.5rem; justify-content: flex-start; padding-top: 3rem; }
+  .form-box { max-width: 100%; }
+}
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="logo">
-    <div class="logo-mark">M</div>
-    <h1>Mind</h1>
-    <p>Saúde mental no trabalho</p>
+
+<!-- LADO ESQUERDO -->
+<div class="side-left">
+  <div class="side-logo">Meu<span>Psi</span></div>
+
+  <div class="side-content">
+    <h2>Sua prática clínica,<br/>organizada em um só lugar.</h2>
+    <p>Gerencie pacientes, anamneses e agenda com segurança e clareza — para que você possa focar no que realmente importa.</p>
   </div>
-  <div class="card">
-    <h2>Bem-vindo de volta</h2>
-    <p class="subtitle">Entre com seu e-mail e senha</p>
-    <div class="field">
-      <label>E-mail</label>
-      <input type="email" id="email" placeholder="seu@email.com" autocomplete="email">
+
+  <div class="depoimento">
+    <p>"O MeuPsi transformou minha rotina clínica. Tenho tudo centralizado e mais tempo para estar presente com meus pacientes."</p>
+    <div class="depoimento-autor">
+      <div class="dep-avatar">A</div>
+      <div>
+        <div class="dep-nome">Ana Beatriz Souza</div>
+        <div class="dep-crp">CRP 06/98432 · Psicóloga clínica</div>
+      </div>
     </div>
-    <div class="field">
-      <label>Senha</label>
-      <input type="password" id="senha" placeholder="••••••••" autocomplete="current-password">
-    </div>
-    <div class="forgot"><a href="#">Esqueci minha senha</a></div>
-    <button class="btn" id="btnLogin" onclick="fazerLogin()">Entrar</button>
-    <div class="msg" id="msg"></div>
   </div>
-  <div class="back"><a href="index.html">← Voltar para o início</a></div>
+</div>
+
+<!-- LADO DIREITO -->
+<div class="side-right">
+  <div class="form-box">
+
+    <div class="form-header">
+      <h1>Bem-vindo de volta</h1>
+      <p>Entre com seu e-mail e senha para acessar o dashboard.</p>
+    </div>
+
+    <div class="form-tabs">
+      <div class="form-tab ativo" onclick="mostrarPanel('login')">Entrar</div>
+      <div class="form-tab" onclick="mostrarPanel('recuperar')">Recuperar senha</div>
+    </div>
+
+    <!-- PANEL: LOGIN -->
+    <div class="panel ativo" id="panel-login">
+      <div id="feedbackLogin" class="feedback"></div>
+
+      <div class="field">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" placeholder="seu@email.com" autocomplete="email" />
+      </div>
+
+      <div class="field">
+        <label for="senha">Senha</label>
+        <div class="input-wrap">
+          <input type="password" id="senha" placeholder="••••••••" autocomplete="current-password" />
+          <button class="input-icon" onclick="toggleSenha()" type="button" id="btnOlho">
+            <svg id="icOlhoFechado" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <svg id="icOlhoAberto" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="display:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="forgot">
+        <a href="#" onclick="mostrarPanel('recuperar');return false;">Esqueci minha senha</a>
+      </div>
+
+      <button class="btn-primary" id="btnLogin" onclick="login()">
+        Entrar na minha conta
+      </button>
+
+      <div class="divider">ou</div>
+
+      <div class="cadastro-link">
+        Ainda não tem conta? <a href="cadastro.html">Cadastre-se gratuitamente</a>
+      </div>
+    </div>
+
+    <!-- PANEL: RECUPERAR SENHA -->
+    <div class="panel" id="panel-recuperar">
+      <div id="feedbackRecuperar" class="feedback"></div>
+
+      <p style="font-size:14px;color:var(--gray-500);margin-bottom:1.25rem;">
+        Informe seu e-mail e enviaremos um link para redefinir sua senha.
+      </p>
+
+      <div class="field">
+        <label for="emailRecuperar">E-mail</label>
+        <input type="email" id="emailRecuperar" placeholder="seu@email.com" autocomplete="email" />
+      </div>
+
+      <button class="btn-primary" id="btnRecuperar" onclick="recuperarSenha()">
+        Enviar link de recuperação
+      </button>
+
+      <div class="cadastro-link" style="margin-top:1.25rem;">
+        <a href="#" onclick="mostrarPanel('login');return false;">← Voltar ao login</a>
+      </div>
+    </div>
+
+    <div class="side-right-footer">
+      <a href="index.html">MeuPsi</a> · <a href="#">Privacidade</a> · <a href="#">Termos</a>
+    </div>
+
+  </div>
 </div>
 
 <script>
-const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPA_URL = 'https://ipjdmdjlrnfqtnqfnydn.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwamRtZGpscm5mcXRucWZueWRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MDc2MzksImV4cCI6MjA5ODI4MzYzOX0.j6YiDE_s7RO7p2Qy80jiSqSx9M24UIIbLcA9IrNecI8';
+const db = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-// Redireciona se já logado
-db.auth.getSession().then(({ data }) => {
-  if (data.session) redirecionarPorPerfil(data.session.user);
+// redireciona se já logado
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session) redirectByRole(session.user);
 });
 
-function mostrarMsg(texto, tipo) {
-  const el = document.getElementById('msg');
-  el.textContent = texto;
-  el.className = 'msg ' + tipo + ' show';
+async function redirectByRole(user) {
+  const { data: psi } = await db
+    .from('psicologos')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (psi) {
+    location.href = 'dashboard-psicologo.html';
+  } else {
+    location.href = 'dashboard-paciente.html';
+  }
 }
 
-async function redirecionarPorPerfil(user) {
-  const email = user.email;
-
-  // 1. Checa se é psicóloga
-  const { data: psi } = await db.from('psicologos').select('id').eq('email', email).maybeSingle();
-  if (psi) { window.location.href = 'dashboard-psicologo.html'; return; }
-
-  // 2. Checa se é empresa
-  const { data: emp } = await db.from('empresas').select('id').eq('email', email).maybeSingle();
-  if (emp) { window.location.href = 'empresa.html'; return; }
-
-  // 3. Padrão: paciente
-  window.location.href = 'dashboard-paciente.html';
+// TABS
+function mostrarPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('ativo'));
+  document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('ativo'));
+  document.getElementById('panel-' + id).classList.add('ativo');
+  document.querySelectorAll('.form-tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(id === 'login' ? 'entrar' : 'recup')) t.classList.add('ativo');
+  });
 }
 
-async function fazerLogin() {
+// MOSTRAR/OCULTAR SENHA
+function toggleSenha() {
+  const input = document.getElementById('senha');
+  const aberto = document.getElementById('icOlhoAberto');
+  const fechado = document.getElementById('icOlhoFechado');
+  if (input.type === 'password') {
+    input.type = 'text';
+    aberto.style.display = 'block';
+    fechado.style.display = 'none';
+  } else {
+    input.type = 'password';
+    aberto.style.display = 'none';
+    fechado.style.display = 'block';
+  }
+}
+
+// LOGIN
+async function login() {
+  const fb  = document.getElementById('feedbackLogin');
+  const btn = document.getElementById('btnLogin');
   const email = document.getElementById('email').value.trim();
   const senha = document.getElementById('senha').value;
-  const btn = document.getElementById('btnLogin');
+
+  fb.style.display = 'none';
 
   if (!email || !senha) {
-    mostrarMsg('Preencha e-mail e senha.', 'error');
-    return;
+    fb.className = 'feedback erro'; fb.style.display = 'block';
+    fb.textContent = 'Preencha e-mail e senha.'; return;
   }
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Entrando...';
+  btn.disabled = true; btn.textContent = 'Entrando...';
 
   const { data, error } = await db.auth.signInWithPassword({ email, password: senha });
 
+  btn.disabled = false; btn.textContent = 'Entrar na minha conta';
+
   if (error) {
-    mostrarMsg('E-mail ou senha incorretos.', 'error');
-    btn.disabled = false;
-    btn.textContent = 'Entrar';
+    fb.className = 'feedback erro'; fb.style.display = 'block';
+    fb.textContent = traduzirErro(error.message);
     return;
   }
 
-  mostrarMsg('Login realizado! Redirecionando...', 'success');
-  await redirecionarPorPerfil(data.user);
+  // redireciona ao dashboard correto
+  await redirectByRole(data.user);
 }
 
-// Enter para logar
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') fazerLogin();
-});
+// RECUPERAR SENHA
+async function recuperarSenha() {
+  const fb  = document.getElementById('feedbackRecuperar');
+  const btn = document.getElementById('btnRecuperar');
+  const email = document.getElementById('emailRecuperar').value.trim();
+
+  fb.style.display = 'none';
+
+  if (!email) {
+    fb.className = 'feedback erro'; fb.style.display = 'block';
+    fb.textContent = 'Informe seu e-mail.'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Enviando...';
+
+  const { error } = await db.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/dashboard-psicologo.html'
+  });
+
+  btn.disabled = false; btn.textContent = 'Enviar link de recuperação';
+
+  fb.style.display = 'block';
+  if (error) {
+    fb.className = 'feedback erro'; fb.textContent = traduzirErro(error.message);
+  } else {
+    fb.className = 'feedback sucesso';
+    fb.textContent = '✓ Link enviado! Verifique sua caixa de entrada.';
+  }
+}
+
+// ENTER nos campos
+document.getElementById('email').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('senha').focus(); });
+document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+document.getElementById('emailRecuperar').addEventListener('keydown', e => { if (e.key === 'Enter') recuperarSenha(); });
+
+// TRADUÇÃO DE ERROS
+function traduzirErro(msg) {
+  if (msg.includes('Invalid login')) return 'E-mail ou senha incorretos.';
+  if (msg.includes('Email not confirmed')) return 'Confirme seu e-mail antes de entrar.';
+  if (msg.includes('Too many requests')) return 'Muitas tentativas. Aguarde alguns minutos.';
+  if (msg.includes('User not found')) return 'Nenhuma conta encontrada com este e-mail.';
+  return 'Erro: ' + msg;
+}
 </script>
 </body>
 </html>
