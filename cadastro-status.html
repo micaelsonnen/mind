@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Status do Cadastro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF; --surface: #FFFFFF; --surface2: #f0ece6; --border: #E2DED8;
+  --navy: #2D4A6B; --sage: #5B8C6E; --text: #1A2332; --muted: #6B7A8D;
+  --warning: #b45309; --error: #b91c1c; --success: #5B8C6E;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; max-width: 480px; text-align: center; }
+.icon { font-size: 48px; margin-bottom: 16px; }
+h2 { font-size: 22px; margin-bottom: 10px; }
+p { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+.status-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; margin: 16px 0; }
+.status-badge.em_analise { background: rgba(180,83,9,0.1); color: var(--warning); }
+.status-badge.incompleto { background: rgba(107,122,141,0.1); color: var(--muted); }
+.status-badge.rejeitado { background: rgba(185,28,28,0.1); color: var(--error); }
+.btn { display: inline-block; margin-top: 20px; background: linear-gradient(135deg, var(--navy), var(--sage)); color: white; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 600; font-size: 14px; }
+.back { display: block; margin-top: 16px; color: var(--muted); font-size: 13px; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="loading">Carregando status do seu cadastro...</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const CONTEUDO = {
+  incompleto: {
+    icon: '📝',
+    titulo: 'Seu cadastro está incompleto',
+    texto: 'Finalize as etapas de cadastro para que possamos validar seu CRP e liberar seu painel.',
+    botao: { texto: 'Continuar cadastro', href: 'cadastro-psicologo.html' }
+  },
+  em_analise: {
+    icon: '⏳',
+    titulo: 'Seu cadastro está em análise',
+    texto: 'Nossa equipe está validando seu CRP e documentos. Isso costuma levar até 24 horas úteis. Você receberá um e-mail assim que for aprovado.',
+    botao: null
+  },
+  rejeitado: {
+    icon: '⚠️',
+    titulo: 'Encontramos um problema com seu cadastro',
+    texto: 'Alguma informação ou documento não pôde ser validado. Entre em contato com o suporte da Mind para regularizar sua situação.',
+    botao: null
+  },
+  aprovado: {
+    icon: '✅',
+    titulo: 'Cadastro aprovado!',
+    texto: 'Seu perfil já está ativo na Mind.',
+    botao: { texto: 'Ir para o painel', href: 'dashboard-psicologo.html' }
+  }
+};
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+
+  const { data: psi } = await db.from('psicologos').select('status_cadastro').eq('email', session.user.email).maybeSingle();
+  const status = psi?.status_cadastro || 'incompleto';
+  const info = CONTEUDO[status] || CONTEUDO.incompleto;
+
+  document.getElementById('card').innerHTML = `
+    <div class="icon">${info.icon}</div>
+    <h2>${info.titulo}</h2>
+    <span class="status-badge ${status}">${status.replace('_', ' ')}</span>
+    <p>${info.texto}</p>
+    ${info.botao ? `<a class="btn" href="${info.botao.href}">${info.botao.texto}</a>` : ''}
+    <a class="back" href="index.html">← Voltar para o início</a>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>

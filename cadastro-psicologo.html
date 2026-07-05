@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Cadastro de Psicólogo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF;
+  --surface: #FFFFFF;
+  --surface2: #f0ece6;
+  --border: #E2DED8;
+  --navy: #2D4A6B;
+  --sage: #5B8C6E;
+  --text: #1A2332;
+  --muted: #6B7A8D;
+  --error: #b91c1c;
+  --success: #5B8C6E;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 28px; }
+.topbar a { color: var(--muted); text-decoration: none; font-size: 14px; }
+.container { max-width: 820px; margin: 0 auto; padding: 32px 28px 80px; }
+.intro { margin-bottom: 24px; }
+.intro h2 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+.intro p { color: var(--muted); font-size: 14px; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); padding: 6px; border-radius: 12px; border: 1px solid var(--border); }
+.tab { flex: 1; text-align: center; padding: 10px 8px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted); border: none; background: none; }
+.tab.active { background: var(--surface2); color: var(--text); }
+.tab.locked { opacity: 0.4; cursor: not-allowed; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 20px; }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.card .card-sub { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+.form-group select, .form-group textarea, .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px; font-family: inherit; }
+.form-group-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-group-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.required::after { content: ' *'; color: var(--error); }
+
+.file-drop { border: 1.5px dashed var(--border); border-radius: 10px; padding: 16px; text-align: center; font-size: 13px; color: var(--muted); cursor: pointer; background: var(--bg); }
+.file-drop.filled { border-color: var(--sage); color: var(--sage); font-weight: 600; }
+.file-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+.tag-input-wrap { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--bg); }
+.tag { background: var(--surface2); border-radius: 20px; padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.tag button { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 13px; line-height: 1; }
+.tag-input-wrap input { border: none; background: none; flex: 1; min-width: 120px; padding: 4px; }
+
+.actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+.btn-salvar { background: linear-gradient(135deg, var(--navy), var(--sage)); color: white; border: none; padding: 12px 28px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btn-salvar:disabled { opacity: 0.6; cursor: not-allowed; }
+.msg { margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 13px; display: none; }
+.msg.error { background: rgba(185,28,28,0.08); color: var(--error); border: 1px solid rgba(185,28,28,0.2); display: block; }
+.msg.success { background: rgba(91,140,110,0.1); color: var(--sage); border: 1px solid rgba(91,140,110,0.2); display: block; }
+
+.checkbox-row { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; font-size: 13px; }
+.checkbox-row input { width: 16px; height: 16px; margin-top: 2px; }
+.checkbox-row a { color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="topbar"><a href="index.html">← Voltar para o início</a></div>
+
+<div class="container">
+  <div class="intro">
+    <h2>Cadastro de Psicólogo</h2>
+    <p>Preencha os dados abaixo para começar a atender pacientes pela Mind. Cada etapa é salva separadamente.</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="pessoal" onclick="tentarAbrirTab('pessoal', this)">1. Pessoal</button>
+    <button class="tab locked" data-tab="profissional" onclick="tentarAbrirTab('profissional', this)">2. Profissional</button>
+    <button class="tab locked" data-tab="atendimento" onclick="tentarAbrirTab('atendimento', this)">3. Atendimento</button>
+    <button class="tab locked" data-tab="financeiro" onclick="tentarAbrirTab('financeiro', this)">4. Financeiro</button>
+  </div>
+
+  <!-- ABA 1: PESSOAL -->
+  <div id="tab-pessoal" class="tab-content active">
+    <div class="card">
+      <h3>Dados pessoais e acesso</h3>
+      <div class="card-sub">Cria sua conta na Mind. As demais abas serão liberadas após salvar esta etapa.</div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label class="required">Nome</label><input type="text" id="p-nome"></div>
+        <div class="form-group"><label class="required">Sobrenome</label><input type="text" id="p-sobrenome"></div>
+      </div>
+      <div class="form-group-row">
+        <div class="form-group"><label class="required">E-mail</label><input type="email" id="p-email"></div>
+        <div class="form-group"><label class="required">Senha</label><input type="password" id="p-senha" placeholder="mínimo 8 caracteres"></div>
+      </div>
+      <div class="form-group-row3">
+        <div class="form-group"><label>Data de nascimento</label><input type="date" id="p-nascimento"></div>
+        <div class="form-group"><label>CPF</label><input type="text" id="p-cpf" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label>Celular</label><input type="text" id="p-celular" placeholder="(00) 00000-0000"></div>
+      </div>
+      <div class="form-group-row">
+        <div class="form-group"><label>Cidade</label><input type="text" id="p-cidade"></div>
+        <div class="form-group"><label>Estado</label>
+          <select id="p-estado">
+            <option value="">Selecione</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="p-aceite">
+        <label for="p-aceite">Li e concordo com os <a href="#" target="_blank">Termos de Uso</a>, a <a href="#" target="_blank">Política de Privacidade</a> e o <a href="#" target="_blank">Contrato de Prestação de Serviços</a> da Mind.</label>
+      </div>
+
+      <div id="msg-pessoal" class="msg"></div>
+      <div class="actions"><button class="btn-salvar" id="btn-pessoal" onclick="salvarPessoal()">Criar conta e continuar</button></div>
+    </div>
+  </div>
+
+  <!-- ABA 2: PROFISSIONAL -->
+  <div id="tab-profissional" class="tab-content">
+    <div class="card">
+      <h3>Registro profissional</h3>
+      <div class="card-sub">Seu CRP é validado manualmente pela equipe Mind antes da liberação do perfil público.</div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label class="required">Número do CRP</label><input type="text" id="pr-crp"></div>
+        <div class="form-group"><label class="required">UF do CRP</label>
+          <select id="pr-uf-crp">
+            <option value="">Selecione</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="required">Carteira do CRP</label>
+        <div class="file-drop" id="drop-crp" onclick="document.getElementById('file-crp').click()">Clique para anexar (imagem ou PDF)</div>
+        <input type="file" id="file-crp" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="marcarArquivo('file-crp','drop-crp')">
+        <div class="file-hint">Arquivos aceitos: JPG, PNG ou PDF, até 5MB.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Certidão de inscrição no CRP</label>
+        <div class="file-drop" id="drop-certidao" onclick="document.getElementById('file-certidao').click()">Clique para anexar (opcional)</div>
+        <input type="file" id="file-certidao" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="marcarArquivo('file-certidao','drop-certidao')">
+      </div>
+
+      <div class="form-group">
+        <label class="required">Diploma</label>
+        <div class="file-drop" id="drop-diploma" onclick="document.getElementById('file-diploma').click()">Clique para anexar (imagem ou PDF)</div>
+        <input type="file" id="file-diploma" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="marcarArquivo('file-diploma','drop-diploma')">
+      </div>
+
+      <div id="msg-profissional" class="msg"></div>
+      <div class="actions"><button class="btn-salvar" onclick="salvarProfissional()">Salvar e continuar</button></div>
+    </div>
+  </div>
+
+  <!-- ABA 3: ATENDIMENTO -->
+  <div id="tab-atendimento" class="tab-content">
+    <div class="card">
+      <h3>Perfil de atendimento</h3>
+      <div class="card-sub">Essas informações aparecem no seu perfil público na Mind</div>
+
+      <div class="form-group"><label class="required">Resumo curto</label><input type="text" id="at-resumo" placeholder="Ex: Fazer terapia é um ato de amor próprio. Cuide-se!"></div>
+      <div class="form-group"><label class="required">Sobre mim</label><textarea id="at-sobre" rows="5" placeholder="Fale sobre sua abordagem, experiência e o que os pacientes podem esperar do acompanhamento."></textarea></div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label class="required">Abordagem</label>
+          <select id="at-abordagem">
+            <option value="">Selecione</option>
+            <option>Terapia Cognitivo-Comportamental</option>
+            <option>Psicanálise</option>
+            <option>Humanista</option>
+            <option>Gestalt-terapia</option>
+            <option>Sistêmica</option>
+            <option>Outras Abordagens</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Formação acadêmica</label><input type="text" id="at-formacao" placeholder="Ex: Psicologia - USP - 2018"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Especialidades</label>
+        <div class="tag-input-wrap" id="tags-especialidades">
+          <input type="text" placeholder="Digite e pressione Enter" onkeydown="adicionarTag(event, 'especialidades')">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Temas que você trabalha</label>
+        <div class="tag-input-wrap" id="tags-temas">
+          <input type="text" placeholder="Digite e pressione Enter" onkeydown="adicionarTag(event, 'temas')">
+        </div>
+      </div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label>Idade mínima atendida</label><input type="number" id="at-idade-min" value="18"></div>
+        <div class="form-group"><label>Idade máxima atendida</label><input type="number" id="at-idade-max" value="65"></div>
+      </div>
+
+      <div id="msg-atendimento" class="msg"></div>
+      <div class="actions"><button class="btn-salvar" onclick="salvarAtendimento()">Salvar e continuar</button></div>
+    </div>
+  </div>
+
+  <!-- ABA 4: FINANCEIRO -->
+  <div id="tab-financeiro" class="tab-content">
+    <div class="card">
+      <h3>Dados para recebimento</h3>
+      <div class="card-sub">Conta de titularidade própria — contas de terceiros ou jurídicas não são aceitas</div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label>Banco</label><input type="text" id="f-banco" placeholder="Ex: 237 - Banco Bradesco S.A."></div>
+        <div class="form-group"><label>Tipo de conta</label>
+          <select id="f-tipo-conta"><option>Conta Corrente</option><option>Conta Poupança</option></select>
+        </div>
+      </div>
+      <div class="form-group-row">
+        <div class="form-group"><label>Agência</label><input type="text" id="f-agencia"></div>
+        <div class="form-group"><label>Conta</label><input type="text" id="f-conta"></div>
+      </div>
+      <div class="form-group-row">
+        <div class="form-group"><label>Tipo de chave PIX</label>
+          <select id="f-tipo-pix"><option>E-mail</option><option>CPF</option><option>Telefone</option><option>Aleatória</option></select>
+        </div>
+        <div class="form-group"><label>Chave PIX</label><input type="text" id="f-chave-pix"></div>
+      </div>
+
+      <div id="msg-financeiro" class="msg"></div>
+      <div class="actions"><button class="btn-salvar" onclick="finalizarCadastro()">Concluir cadastro</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let psicologoId = null;
+let userId = null;
+const tags = { especialidades: [], temas: [] };
+
+function mostrarMsg(id, texto, tipo) {
+  const el = document.getElementById(id);
+  el.textContent = texto;
+  el.className = 'msg ' + tipo;
+}
+
+function tentarAbrirTab(nome, el) {
+  if (el.classList.contains('locked')) return;
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + nome).classList.add('active');
+  el.classList.add('active');
+}
+
+function destravarProximaTab(nomeAtual) {
+  const ordem = ['pessoal', 'profissional', 'atendimento', 'financeiro'];
+  const idx = ordem.indexOf(nomeAtual);
+  const proximo = ordem[idx + 1];
+  if (!proximo) return;
+  const tabEl = document.querySelector(`.tab[data-tab="${proximo}"]`);
+  tabEl.classList.remove('locked');
+  tentarAbrirTab(proximo, tabEl);
+}
+
+function marcarArquivo(inputId, dropId) {
+  const input = document.getElementById(inputId);
+  const drop = document.getElementById(dropId);
+  if (input.files.length) {
+    drop.textContent = '✓ ' + input.files[0].name;
+    drop.classList.add('filled');
+  }
+}
+
+function adicionarTag(event, categoria) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const valor = event.target.value.trim();
+  if (!valor) return;
+  tags[categoria].push(valor);
+  event.target.value = '';
+  renderTags(categoria);
+}
+
+function removerTag(categoria, idx) {
+  tags[categoria].splice(idx, 1);
+  renderTags(categoria);
+}
+
+function renderTags(categoria) {
+  const wrap = document.getElementById('tags-' + categoria);
+  const input = wrap.querySelector('input');
+  wrap.querySelectorAll('.tag').forEach(t => t.remove());
+  tags[categoria].forEach((valor, idx) => {
+    const tagEl = document.createElement('span');
+    tagEl.className = 'tag';
+    tagEl.innerHTML = `${valor} <button type="button" onclick="removerTag('${categoria}', ${idx})">✕</button>`;
+    wrap.insertBefore(tagEl, input);
+  });
+}
+
+/* ---------------- ABA 1: PESSOAL ---------------- */
+
+async function salvarPessoal() {
+  const nome = document.getElementById('p-nome').value.trim();
+  const sobrenome = document.getElementById('p-sobrenome').value.trim();
+  const email = document.getElementById('p-email').value.trim();
+  const senha = document.getElementById('p-senha').value;
+  const aceite = document.getElementById('p-aceite').checked;
+
+  if (!nome || !sobrenome || !email || !senha) {
+    mostrarMsg('msg-pessoal', 'Preencha nome, sobrenome, e-mail e senha.', 'error');
+    return;
+  }
+  if (senha.length < 8) {
+    mostrarMsg('msg-pessoal', 'A senha deve ter no mínimo 8 caracteres.', 'error');
+    return;
+  }
+  if (!aceite) {
+    mostrarMsg('msg-pessoal', 'É necessário aceitar os Termos de Uso, a Política de Privacidade e o Contrato para continuar.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-pessoal');
+  btn.disabled = true;
+  btn.textContent = 'Criando conta...';
+
+  const { data: signUpData, error: erroAuth } = await db.auth.signUp({ email, password: senha });
+  if (erroAuth) {
+    mostrarMsg('msg-pessoal', 'Erro ao criar conta: ' + erroAuth.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Criar conta e continuar';
+    return;
+  }
+  userId = signUpData.user?.id;
+
+  const { data: psi, error: erroPsi } = await db.from('psicologos').insert({
+    nome: nome + ' ' + sobrenome,
+    sobrenome, email,
+    data_nascimento: document.getElementById('p-nascimento').value || null,
+    cpf: document.getElementById('p-cpf').value.trim(),
+    celular: document.getElementById('p-celular').value.trim(),
+    cidade: document.getElementById('p-cidade').value.trim(),
+    estado: document.getElementById('p-estado').value,
+    status_cadastro: 'incompleto',
+    aceite_contrato: true,
+    data_aceite_contrato: new Date().toISOString()
+  }).select().single();
+
+  if (erroPsi) {
+    mostrarMsg('msg-pessoal', 'Conta criada, mas houve erro ao salvar seus dados: ' + erroPsi.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Criar conta e continuar';
+    return;
+  }
+
+  psicologoId = psi.id;
+  mostrarMsg('msg-pessoal', 'Dados salvos! Avançando para a próxima etapa...', 'success');
+  destravarProximaTab('pessoal');
+}
+
+/* ---------------- ABA 2: PROFISSIONAL ---------------- */
+
+async function uploadDocumento(inputId, nomeArquivo) {
+  const input = document.getElementById(inputId);
+  if (!input.files.length) return null;
+  const file = input.files[0];
+  const path = `${userId}/${nomeArquivo}_${Date.now()}_${file.name}`;
+  const { error } = await db.storage.from('psicologos-documentos').upload(path, file);
+  if (error) throw error;
+  return path;
+}
+
+async function salvarProfissional() {
+  if (!psicologoId) { mostrarMsg('msg-profissional', 'Complete a etapa "Pessoal" primeiro.', 'error'); return; }
+
+  const crp = document.getElementById('pr-crp').value.trim();
+  const ufCrp = document.getElementById('pr-uf-crp').value;
+  if (!crp || !ufCrp) { mostrarMsg('msg-profissional', 'Informe o número e a UF do CRP.', 'error'); return; }
+  if (!document.getElementById('file-crp').files.length) { mostrarMsg('msg-profissional', 'Anexe a carteira do CRP.', 'error'); return; }
+  if (!document.getElementById('file-diploma').files.length) { mostrarMsg('msg-profissional', 'Anexe o diploma.', 'error'); return; }
+
+  try {
+    const [crpPath, certidaoPath, diplomaPath] = await Promise.all([
+      uploadDocumento('file-crp', 'crp'),
+      uploadDocumento('file-certidao', 'certidao'),
+      uploadDocumento('file-diploma', 'diploma')
+    ]);
+
+    const { error } = await db.from('psicologos').update({
+      crp, uf_crp: ufCrp,
+      crp_doc_url: crpPath,
+      certidao_doc_url: certidaoPath,
+      diploma_doc_url: diplomaPath,
+      status_cadastro: 'em_analise'
+    }).eq('id', psicologoId);
+
+    if (error) throw error;
+
+    mostrarMsg('msg-profissional', 'Documentos enviados! Nossa equipe validará seu CRP em até 24h.', 'success');
+    destravarProximaTab('profissional');
+  } catch (err) {
+    mostrarMsg('msg-profissional', 'Erro ao enviar documentos: ' + err.message, 'error');
+  }
+}
+
+/* ---------------- ABA 3: ATENDIMENTO ---------------- */
+
+async function salvarAtendimento() {
+  if (!psicologoId) { mostrarMsg('msg-atendimento', 'Complete as etapas anteriores primeiro.', 'error'); return; }
+
+  const resumo = document.getElementById('at-resumo').value.trim();
+  const sobre = document.getElementById('at-sobre').value.trim();
+  const abordagem = document.getElementById('at-abordagem').value;
+
+  if (!resumo || !sobre || !abordagem) {
+    mostrarMsg('msg-atendimento', 'Preencha resumo, sobre mim e abordagem.', 'error');
+    return;
+  }
+
+  const { error } = await db.from('psicologos').update({
+    resumo, sobre_mim: sobre, abordagem,
+    formacao: document.getElementById('at-formacao').value.trim(),
+    especialidades: tags.especialidades,
+    temas: tags.temas,
+    idade_minima: parseInt(document.getElementById('at-idade-min').value) || null,
+    idade_maxima: parseInt(document.getElementById('at-idade-max').value) || null
+  }).eq('id', psicologoId);
+
+  if (error) { mostrarMsg('msg-atendimento', 'Erro ao salvar: ' + error.message, 'error'); return; }
+
+  mostrarMsg('msg-atendimento', 'Perfil de atendimento salvo!', 'success');
+  destravarProximaTab('atendimento');
+}
+
+/* ---------------- ABA 4: FINANCEIRO ---------------- */
+
+async function finalizarCadastro() {
+  if (!psicologoId) { mostrarMsg('msg-financeiro', 'Complete as etapas anteriores primeiro.', 'error'); return; }
+
+  const { error } = await db.from('psicologos').update({
+    banco: document.getElementById('f-banco').value.trim(),
+    tipo_conta: document.getElementById('f-tipo-conta').value,
+    agencia: document.getElementById('f-agencia').value.trim(),
+    conta: document.getElementById('f-conta').value.trim(),
+    tipo_chave_pix: document.getElementById('f-tipo-pix').value,
+    chave_pix: document.getElementById('f-chave-pix').value.trim()
+  }).eq('id', psicologoId);
+
+  if (error) { mostrarMsg('msg-financeiro', 'Erro ao salvar: ' + error.message, 'error'); return; }
+
+  mostrarMsg('msg-financeiro', 'Cadastro concluído! Assim que seu CRP for validado, você poderá acessar seu painel. Redirecionando...', 'success');
+  setTimeout(() => { window.location.href = 'cadastro-status.html'; }, 2000);
+}
+</script>
+</body>
+</html>

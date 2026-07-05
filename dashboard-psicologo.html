@@ -218,6 +218,10 @@ async function init() {
 
   // Busca dados do psicólogo
   const { data: psi } = await db.from('psicologos').select('*').eq('email', userEmail).single();
+  if (psi && psi.status_cadastro && psi.status_cadastro !== 'aprovado') {
+    window.location.href = 'cadastro-status.html';
+    return;
+  }
   if (psi) {
     psicologoId = psi.id;
     const nome = psi.nome || userEmail.split('@')[0];

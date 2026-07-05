@@ -182,12 +182,15 @@
     <div class="forgot"><a href="#">Esqueci minha senha</a></div>
     <button class="btn" id="btnLogin" onclick="fazerLogin()">Entrar</button>
     <div class="msg" id="msg"></div>
+    <div style="text-align:center;margin-top:18px;font-size:13px;color:var(--muted)">
+      É psicólogo(a) e ainda não tem conta? <a href="cadastro-psicologo.html" style="color:var(--accent)">Cadastre-se aqui</a>
+    </div>
   </div>
   <div class="back"><a href="index.html">← Voltar para o início</a></div>
 </div>
 
 <script>
-const SUPABASE_URL = 'https://ipjdmdjlrnfqtnqfnydn.supabase.co';
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -206,8 +209,15 @@ async function redirecionarPorPerfil(user) {
   const email = user.email;
 
   // 1. Checa se é psicóloga
-  const { data: psi } = await db.from('psicologos').select('id').eq('email', email).maybeSingle();
-  if (psi) { window.location.href = 'dashboard-psicologo.html'; return; }
+  const { data: psi } = await db.from('psicologos').select('id, status_cadastro').eq('email', email).maybeSingle();
+  if (psi) {
+    if (psi.status_cadastro && psi.status_cadastro !== 'aprovado') {
+      window.location.href = 'cadastro-status.html';
+    } else {
+      window.location.href = 'dashboard-psicologo.html';
+    }
+    return;
+  }
 
   // 2. Checa se é empresa
   const { data: emp } = await db.from('empresas').select('id').eq('email', email).maybeSingle();
