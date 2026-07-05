@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Novo Paciente</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF;
+  --surface: #FFFFFF;
+  --surface2: #f0ece6;
+  --border: #E2DED8;
+  --navy: #2D4A6B;
+  --sage: #5B8C6E;
+  --text: #1A2332;
+  --muted: #6B7A8D;
+  --error: #b91c1c;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; }
+.topbar a { color: var(--muted); text-decoration: none; font-size: 14px; }
+.topbar a:hover { color: var(--text); }
+.topbar h1 { font-size: 18px; font-weight: 700; }
+.container { max-width: 760px; margin: 0 auto; padding: 32px 28px 80px; }
+.intro { margin-bottom: 24px; }
+.intro h2 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+.intro p { color: var(--muted); font-size: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 20px; }
+.card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.card .card-sub { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+.form-group select, .form-group textarea, .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px; font-family: inherit; }
+.form-group-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.required::after { content: ' *'; color: var(--error); }
+.actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px; }
+.btn-cancelar { background: none; border: 1.5px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn-salvar { background: linear-gradient(135deg, var(--navy), var(--sage)); color: white; border: none; padding: 12px 28px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btn-salvar:disabled { opacity: 0.6; cursor: not-allowed; }
+.msg { margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 13px; display: none; }
+.msg.error { background: rgba(185,28,28,0.08); color: var(--error); border: 1px solid rgba(185,28,28,0.2); display: block; }
+.msg.success { background: rgba(91,140,110,0.1); color: var(--sage); border: 1px solid rgba(91,140,110,0.2); display: block; }
+.aviso-lgpd { font-size: 12px; color: var(--muted); background: var(--surface2); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="dashboard-psicologo.html">← Voltar ao dashboard</a>
+</div>
+
+<div class="container">
+  <div class="intro">
+    <h2>Cadastrar novo paciente</h2>
+    <p>Preencha os dados básicos e a anamnese inicial. Você pode completar ou editar tudo isso depois na ficha do paciente.</p>
+  </div>
+
+  <div class="aviso-lgpd">
+    🔒 Estes dados são clínicos e confidenciais. Empresas patrocinadoras nunca têm acesso a esta ficha — apenas a indicadores agregados e anônimos, conforme a LGPD.
+  </div>
+
+  <form id="form-paciente" onsubmit="return false">
+    <div class="card">
+      <h3>Dados básicos</h3>
+      <div class="card-sub">Identificação e vínculo com a plataforma</div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label class="required">Nome completo</label><input type="text" id="nome" required></div>
+        <div class="form-group"><label class="required">E-mail</label><input type="email" id="email" required></div>
+      </div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label>Empresa patrocinadora</label>
+          <select id="empresa_id"><option value="">Nenhuma (paciente autônomo)</option></select>
+        </div>
+        <div class="form-group"><label>Departamento</label><input type="text" id="departamento" placeholder="Ex: RH, Financeiro..."></div>
+      </div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label>Data de início do tratamento</label><input type="date" id="data_inicio"></div>
+        <div class="form-group"><label>Coparticipação do paciente (R$/sessão)</label><input type="number" id="valor_paciente" value="10" min="0" step="0.5"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Anamnese inicial</h3>
+      <div class="card-sub">Estrutura clínica — todos os campos podem ser completados depois</div>
+
+      <div class="form-group-row">
+        <div class="form-group"><label>Data de nascimento</label><input type="date" id="data_nascimento"></div>
+        <div class="form-group"><label>Telefone</label><input type="text" id="telefone" placeholder="(00) 00000-0000"></div>
+      </div>
+      <div class="form-group-row">
+        <div class="form-group"><label>Estado civil</label><input type="text" id="estado_civil"></div>
+        <div class="form-group"><label>Profissão</label><input type="text" id="profissao"></div>
+      </div>
+      <div class="form-group"><label>Queixa principal</label><textarea id="queixa_principal" rows="2"></textarea></div>
+      <div class="form-group"><label>História clínica</label><textarea id="historia_clinica" rows="3"></textarea></div>
+      <div class="form-group"><label>História familiar</label><textarea id="historia_familiar" rows="3"></textarea></div>
+      <div class="form-group"><label>História laboral</label><textarea id="historia_laboral" rows="3"></textarea></div>
+      <div class="form-group"><label>Rede de apoio</label><textarea id="rede_apoio" rows="2"></textarea></div>
+      <div class="form-group"><label>Objetivos terapêuticos</label><textarea id="objetivos_terapeuticos" rows="2"></textarea></div>
+      <div class="form-group"><label>Intercorrências iniciais relevantes</label><textarea id="intercorrencias_iniciais" rows="2"></textarea></div>
+    </div>
+
+    <div class="card">
+      <h3>Hipótese diagnóstica inicial</h3>
+      <div class="card-sub">Opcional — pode ser definida depois de mais sessões</div>
+      <div class="form-group-row">
+        <div class="form-group"><label>CID</label><input type="text" id="cid" placeholder="Ex: F41.1"></div>
+      </div>
+      <div class="form-group"><label>Descrição / justificativa clínica</label><textarea id="hipotese_descricao" rows="2"></textarea></div>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="actions">
+      <a href="dashboard-psicologo.html" class="btn-cancelar">Cancelar</a>
+      <button class="btn-salvar" id="btn-salvar" onclick="salvarPaciente()">Cadastrar paciente</button>
+    </div>
+  </form>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let psicologoId = null;
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+
+  const { data: psi } = await db.from('psicologos').select('id').eq('email', session.user.email).single();
+  if (!psi) { alert('Apenas psicólogos podem cadastrar pacientes.'); window.location.href = 'dashboard-paciente.html'; return; }
+  psicologoId = psi.id;
+
+  document.getElementById('data_inicio').value = new Date().toISOString().slice(0, 10);
+  carregarEmpresas();
+}
+
+async function carregarEmpresas() {
+  const { data } = await db.from('empresas').select('id, nome').order('nome');
+  const sel = document.getElementById('empresa_id');
+  (data || []).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id;
+    opt.textContent = e.nome;
+    sel.appendChild(opt);
+  });
+}
+
+function mostrarMsg(texto, tipo) {
+  const el = document.getElementById('msg');
+  el.textContent = texto;
+  el.className = 'msg ' + tipo;
+}
+
+async function salvarPaciente() {
+  const nome = document.getElementById('nome').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  if (!nome || !email) { mostrarMsg('Nome e e-mail são obrigatórios.', 'error'); return; }
+
+  const btn = document.getElementById('btn-salvar');
+  btn.disabled = true;
+  btn.textContent = 'Cadastrando...';
+
+  const queixa_principal = document.getElementById('queixa_principal').value.trim();
+
+  // 1. Cria o paciente
+  const { data: paciente, error: erroPaciente } = await db.from('pacientes').insert({
+    nome, email,
+    psicologo_id: psicologoId,
+    empresa_id: document.getElementById('empresa_id').value || null,
+    departamento: document.getElementById('departamento').value.trim() || null,
+    data_inicio: document.getElementById('data_inicio').value || new Date().toISOString().slice(0, 10),
+    valor_paciente: parseFloat(document.getElementById('valor_paciente').value) || 10,
+    queixa_principal,
+    status: 'ativo',
+    total_sessoes: 0
+  }).select().single();
+
+  if (erroPaciente) {
+    mostrarMsg('Erro ao cadastrar paciente: ' + erroPaciente.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Cadastrar paciente';
+    return;
+  }
+
+  // 2. Cria a anamnese vinculada
+  const { error: erroAnamnese } = await db.from('anamneses').insert({
+    paciente_id: paciente.id,
+    psicologo_id: psicologoId,
+    data_nascimento: document.getElementById('data_nascimento').value || null,
+    telefone: document.getElementById('telefone').value.trim(),
+    estado_civil: document.getElementById('estado_civil').value.trim(),
+    profissao: document.getElementById('profissao').value.trim(),
+    queixa_principal,
+    historia_clinica: document.getElementById('historia_clinica').value.trim(),
+    historia_familiar: document.getElementById('historia_familiar').value.trim(),
+    historia_laboral: document.getElementById('historia_laboral').value.trim(),
+    rede_apoio: document.getElementById('rede_apoio').value.trim(),
+    objetivos_terapeuticos: document.getElementById('objetivos_terapeuticos').value.trim(),
+    intercorrencias_iniciais: document.getElementById('intercorrencias_iniciais').value.trim()
+  });
+
+  if (erroAnamnese) {
+    mostrarMsg('Paciente criado, mas houve erro ao salvar a anamnese: ' + erroAnamnese.message, 'error');
+  }
+
+  // 3. Cria a hipótese diagnóstica inicial, se informada
+  const cid = document.getElementById('cid').value.trim();
+  const hipoteseDescricao = document.getElementById('hipotese_descricao').value.trim();
+  if (cid || hipoteseDescricao) {
+    await db.from('hipoteses_diagnosticas').insert({
+      paciente_id: paciente.id,
+      psicologo_id: psicologoId,
+      cid, descricao: hipoteseDescricao,
+      ativa: true
+    });
+  }
+
+  mostrarMsg('Paciente cadastrado com sucesso! Redirecionando...', 'success');
+  setTimeout(() => { window.location.href = 'paciente.html?id=' + paciente.id; }, 1200);
+}
+
+init();
+</script>
+</body>
+</html>

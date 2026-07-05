@@ -155,6 +155,11 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
       <div id="melhorias-lista"><div class="loading">Carregando...</div></div>
     </div>
     <div class="card">
+      <h3>🌿 Sua rotina</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Como seu psicólogo tem observado sua rotina ao longo do tratamento</p>
+      <div id="rotina-lista"><div class="loading">Carregando...</div></div>
+    </div>
+    <div class="card">
       <h3>🏆 Marcos da jornada</h3>
       <div id="marcos-lista"><div class="loading">Carregando...</div></div>
     </div>
@@ -188,7 +193,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 </div>
 
 <script>
-const SUPABASE_URL = 'https://ipjdmdjlrnfqtnqfnydn.supabase.co';
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -255,7 +260,7 @@ async function carregarUltimaSessao() {
 }
 
 async function carregarProgresso() {
-  const { data: sessoes } = await db.from('sessoes').select('data_hora, sintomas(ansiedade, sono, humor)').eq('paciente_id', pacienteData.id).eq('status', 'realizada').order('data_hora');
+  const { data: sessoes } = await db.from('sessoes').select('data_hora, sintomas(ansiedade, sono, humor, funcionamento_ocupacional, funcionamento_social, adesao)').eq('paciente_id', pacienteData.id).eq('status', 'realizada').order('data_hora');
   const comSintomas = sessoes?.filter(s => s.sintomas?.length) || [];
 
   if (comSintomas.length) {
@@ -290,8 +295,23 @@ async function carregarProgresso() {
     } else {
       document.getElementById('melhorias-lista').innerHTML = '<div class="sem-dados">Dados insuficientes para comparação</div>';
     }
+
+    // Rotina (funcionamento ocupacional/social e adesão), em linguagem acessível
+    const ultimaRotina = comSintomas[comSintomas.length - 1].sintomas[0];
+    const rotina = [
+      { nome: 'Trabalho ou estudos', valor: ultimaRotina.funcionamento_ocupacional },
+      { nome: 'Vida social', valor: ultimaRotina.funcionamento_social },
+      { nome: 'Constância no tratamento', valor: ultimaRotina.adesao }
+    ].filter(r => r.valor != null);
+
+    document.getElementById('rotina-lista').innerHTML = rotina.length ? rotina.map(r => `
+      <div class="melhora-row">
+        <div class="melhora-header"><span>${r.nome}</span><span>${r.valor}/10</span></div>
+        <div class="melhora-bar"><div class="melhora-fill" style="width:${r.valor*10}%"></div></div>
+      </div>`).join('') : '<div class="sem-dados">Seu psicólogo ainda não registrou esses dados</div>';
   } else {
     document.getElementById('melhorias-lista').innerHTML = '<div class="sem-dados">Nenhum dado de sintoma registrado</div>';
+    document.getElementById('rotina-lista').innerHTML = '<div class="sem-dados">Nenhum dado registrado ainda</div>';
   }
 
   // Marcos
