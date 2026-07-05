@@ -406,10 +406,19 @@ async function carregar() {
       disponibilidade: p.disponibilidade || rng(i, demoExtra.disponibilidade),
       bio: p.bio || '',
     }));
+
+    const { data: avaliacoes } = await db.from('avaliacoes').select('psicologo_id, nota');
+    mediasAvaliacoes = {};
+    (avaliacoes || []).forEach(a => {
+      if (!mediasAvaliacoes[a.psicologo_id]) mediasAvaliacoes[a.psicologo_id] = [];
+      mediasAvaliacoes[a.psicologo_id].push(a.nota);
+    });
   }
 
   renderizar(todosOsPsis);
 }
+
+let mediasAvaliacoes = {};
 
 function gerarEsp(seed) {
   const todas = ['Ansiedade', 'Burnout', 'Depressão', 'Luto', 'Relacionamentos', 'Trauma', 'Autoestima', 'TDAH'];
@@ -451,6 +460,9 @@ function renderizar(lista) {
     const iniciais = inicialStr(p.nome);
     const valor = `<strong>R$ 50,00/sessão</strong>`;
     const espTags = (p.especialidades || []).slice(0,3).map(e => `<span class="tag-esp">${e}</span>`).join('');
+    const notas = mediasAvaliacoes[p.id] || [];
+    const media = notas.length ? (notas.reduce((s,n)=>s+n,0) / notas.length) : 0;
+    const ratingHtml = notas.length ? `<div style="font-size:0.78rem;color:#b45309;margin-top:2px">★ ${media.toFixed(1)} (${notas.length})</div>` : '';
     return `
     <a href="psicologo.html?id=${p.id}" class="card-psi">
       <div class="card-banner">
@@ -460,6 +472,7 @@ function renderizar(lista) {
       <div class="card-body">
         <div class="card-nome">${p.nome || 'Psicólogo'}</div>
         <div class="card-crp">${p.crp || ''}</div>
+        ${ratingHtml}
         <span class="card-abordagem">${p.abordagem || 'Abordagem integrada'}</span>
         <div class="card-especialidades">${espTags}</div>
         <div class="card-footer">

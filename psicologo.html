@@ -133,6 +133,24 @@
   }
 
   .info-lista { display: flex; flex-direction: column; gap: 12px; }
+
+  /* AVALIAÇÕES */
+  .rating-summary { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .rating-stars { color: #f4b740; font-size: 1rem; letter-spacing: 1px; }
+  .rating-count { color: rgba(255,255,255,0.75); font-size: 0.85rem; }
+  .review-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .review-item:last-child { border-bottom: none; }
+  .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .review-stars { color: #f4b740; font-size: 0.9rem; }
+  .review-data { font-size: 0.75rem; color: var(--text-muted); }
+  .review-texto { font-size: 0.88rem; color: var(--text); }
+  .sem-avaliacoes { color: var(--text-muted); font-size: 0.9rem; }
+  .form-avaliacao { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .estrela-input { display: flex; gap: 6px; margin-bottom: 10px; }
+  .estrela-input span { font-size: 1.4rem; cursor: pointer; color: var(--border); }
+  .estrela-input span.ativa { color: #f4b740; }
+  .form-avaliacao textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: inherit; font-size: 0.85rem; margin-bottom: 10px; resize: vertical; }
+  .btn-avaliar { background: var(--navy); color: white; border: none; padding: 8px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
   .info-item { display: flex; align-items: flex-start; gap: 12px; }
   .info-icon {
     width: 36px; height: 36px; border-radius: 8px;
@@ -384,6 +402,9 @@ function renderizarPerfil(p) {
   const dias = gerarDias();
   const nomeIniciais = inicialStr(p.nome);
   const espTags = (p.especialidades || []).map(e => `<span class="tag-esp">${e}</span>`).join('');
+  const temasTags = (p.temas || []).map(t => `<span class="tag-esp">${t}</span>`).join('');
+  const avaliacoes = window._avaliacoesAtuais || [];
+  const mediaAvaliacoes = avaliacoes.length ? avaliacoes.reduce((s, a) => s + a.nota, 0) / avaliacoes.length : 0;
   const dispTexto = { manha:'Manhã (8h–12h)', tarde:'Tarde (13h–18h)', noite:'Noite (18h–21h)' }[p.disponibilidade] || 'Sob consulta';
 
   const diasHtml = dias.map((d, i) => {
@@ -409,6 +430,10 @@ function renderizarPerfil(p) {
             <span class="badge badge-abord">${p.abordagem || 'Abordagem integrada'}</span>
             <span class="badge badge-disp">🕐 ${dispTexto}</span>
           </div>
+          <div class="rating-summary">
+            <span class="rating-stars">${renderEstrelas(mediaAvaliacoes)}</span>
+            <span class="rating-count">${mediaAvaliacoes > 0 ? mediaAvaliacoes.toFixed(1) : '—'} (${avaliacoes.length} avaliaç${avaliacoes.length === 1 ? 'ão' : 'ões'})</span>
+          </div>
         </div>
       </div>
     </div>
@@ -418,13 +443,18 @@ function renderizarPerfil(p) {
       <div class="perfil-col">
         <div class="card">
           <div class="card-title">Sobre</div>
-          <p class="bio-text">${p.bio || 'Profissional dedicado ao cuidado da saúde mental com abordagem humanizada e ética.'}</p>
+          <p class="bio-text">${p.sobre_mim || p.bio || 'Profissional dedicado ao cuidado da saúde mental com abordagem humanizada e ética.'}</p>
         </div>
 
         <div class="card">
           <div class="card-title">Especialidades</div>
           <div class="especialidades-grid">${espTags}</div>
         </div>
+
+        ${temasTags ? `<div class="card">
+          <div class="card-title">Temas que trabalha</div>
+          <div class="especialidades-grid">${temasTags}</div>
+        </div>` : ''}
 
         <div class="card">
           <div class="card-title">Formação e experiência</div>
@@ -464,6 +494,22 @@ function renderizarPerfil(p) {
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-title">Avaliações de pacientes</div>
+          <div id="lista-avaliacoes">
+            ${avaliacoes.length ? avaliacoes.map(a => `
+              <div class="review-item">
+                <div class="review-header">
+                  <span class="review-stars">${renderEstrelas(a.nota)}</span>
+                  <span class="review-data">${new Date(a.criado_em).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
+                </div>
+                ${a.comentario ? `<p class="review-texto">${a.comentario}</p>` : ''}
+              </div>
+            `).join('') : '<p class="sem-avaliacoes">Ainda não há avaliações públicas para este profissional.</p>'}
+          </div>
+          <div id="area-nova-avaliacao"></div>
+        </div>
       </div>
 
       <!-- Coluna agenda -->
@@ -496,6 +542,8 @@ function renderizarPerfil(p) {
       </div>
     </div>
   `;
+
+  verificarPodeAvaliar();
 }
 
 function selecionarDia(el, texto) {
@@ -585,6 +633,70 @@ function mostrarSucesso() {
   document.getElementById('overlay').classList.add('aberto');
 }
 
+function renderEstrelas(nota) {
+  const cheias = Math.round(nota);
+  return '★'.repeat(cheias) + '☆'.repeat(5 - cheias);
+}
+
+async function carregarAvaliacoes(id) {
+  const { data } = await db.from('avaliacoes').select('nota, comentario, criado_em').eq('psicologo_id', id).order('criado_em', { ascending: false });
+  window._avaliacoesAtuais = data || [];
+}
+
+let notaSelecionada = 0;
+
+async function verificarPodeAvaliar() {
+  const area = document.getElementById('area-nova-avaliacao');
+  if (!area || !psicologo || psicologo.id?.toString().startsWith('demo-')) return;
+
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { area.innerHTML = `<p class="sem-avaliacoes" style="margin-top:12px"><a href="login.html" style="color:var(--navy)">Entre na sua conta</a> para avaliar este profissional.</p>`; return; }
+
+  const { data: paciente } = await db.from('pacientes').select('id').eq('email', session.user.email).maybeSingle();
+  if (!paciente) return; // usuário logado não é paciente (ex.: psicólogo vendo o próprio perfil)
+
+  const { data: jaAvaliou } = await db.from('avaliacoes').select('id').eq('psicologo_id', psicologo.id).eq('paciente_id', paciente.id).maybeSingle();
+  if (jaAvaliou) { area.innerHTML = `<p class="sem-avaliacoes" style="margin-top:12px">Você já avaliou este profissional. Obrigado!</p>`; return; }
+
+  const { data: sessaoRealizada } = await db.from('sessoes').select('id').eq('psicologo_id', psicologo.id).eq('paciente_id', paciente.id).eq('status', 'realizada').limit(1).maybeSingle();
+  if (!sessaoRealizada) return; // só pode avaliar depois de ao menos uma sessão realizada
+
+  area.innerHTML = `
+    <div class="form-avaliacao">
+      <div class="card-title" style="margin-bottom:10px">Deixe sua avaliação</div>
+      <div class="estrela-input" id="estrela-input">
+        ${[1,2,3,4,5].map(n => `<span data-n="${n}" onclick="selecionarNota(${n})">★</span>`).join('')}
+      </div>
+      <textarea id="comentario-avaliacao" rows="3" placeholder="Conte como foi sua experiência (opcional)"></textarea>
+      <button class="btn-avaliar" onclick="enviarAvaliacao('${paciente.id}')">Enviar avaliação</button>
+    </div>
+  `;
+}
+
+function selecionarNota(n) {
+  notaSelecionada = n;
+  document.querySelectorAll('#estrela-input span').forEach(el => {
+    el.classList.toggle('ativa', parseInt(el.dataset.n) <= n);
+  });
+}
+
+async function enviarAvaliacao(pacienteId) {
+  if (!notaSelecionada) { alert('Selecione uma nota de 1 a 5 estrelas.'); return; }
+  const comentario = document.getElementById('comentario-avaliacao').value.trim();
+
+  const { error } = await db.from('avaliacoes').insert({
+    psicologo_id: psicologo.id,
+    paciente_id: pacienteId,
+    nota: notaSelecionada,
+    comentario
+  });
+
+  if (error) { alert('Erro ao enviar avaliação: ' + error.message); return; }
+
+  await carregarAvaliacoes(psicologo.id);
+  renderizarPerfil(psicologo);
+}
+
 async function carregar() {
   if (!psiId) {
     window.location.href = 'psicologos.html';
@@ -593,13 +705,14 @@ async function carregar() {
 
   // Tenta demo data primeiro (IDs demo-*)
   if (psiId.startsWith('demo-') && demoData[psiId]) {
+    window._avaliacoesAtuais = [];
     renderizarPerfil(demoData[psiId]);
     return;
   }
 
   const { data, error } = await db
     .from('psicologos')
-    .select('id, nome, crp, abordagem, email, foto_url, especialidades, disponibilidade, bio, formacao, pos_graduacao')
+    .select('id, nome, crp, abordagem, email, foto_url, especialidades, temas, disponibilidade, bio, sobre_mim, formacao, pos_graduacao')
     .eq('id', psiId)
     .maybeSingle();
 
@@ -611,6 +724,7 @@ async function carregar() {
     return;
   }
 
+  await carregarAvaliacoes(data.id);
   renderizarPerfil(data);
 }
 
