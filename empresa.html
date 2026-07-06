@@ -6,6 +6,7 @@
 <title>Mind — Dashboard Empresa</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -167,26 +168,26 @@ tbody tr:last-child td { border-bottom: none; }
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-size:24px;margin-bottom:8px">📊</div>
             <div style="font-weight:600;margin-bottom:4px">Impacto semestral</div>
-            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Evolução agregada de sintomas</div>
-            <button onclick="gerarRelatorio('impacto')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Engajamento e impacto agregado, sem dado clínico</div>
+            <button id="btn-relatorio-impacto" onclick="gerarRelatorio('impacto')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
           </div>
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-size:24px;margin-bottom:8px">💰</div>
             <div style="font-weight:600;margin-bottom:4px">Extrato financeiro</div>
             <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Repasses e investimentos</div>
-            <button onclick="gerarRelatorio('financeiro')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+            <button id="btn-relatorio-financeiro" onclick="gerarRelatorio('financeiro')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
           </div>
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-size:24px;margin-bottom:8px">🏢</div>
             <div style="font-weight:600;margin-bottom:4px">Adesão por departamento</div>
             <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Engajamento por equipe</div>
-            <button onclick="gerarRelatorio('adesao')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
+            <button id="btn-relatorio-adesao" onclick="gerarRelatorio('adesao')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Gerar PDF</button>
           </div>
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-size:24px;margin-bottom:8px">🔒</div>
             <div style="font-weight:600;margin-bottom:4px">Carta de privacidade</div>
             <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Para enviar aos colaboradores</div>
-            <button onclick="gerarRelatorio('privacidade')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Baixar</button>
+            <button id="btn-relatorio-privacidade" onclick="gerarRelatorio('privacidade')" style="background:var(--accent);color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Baixar</button>
           </div>
         </div>
       </div>
@@ -364,7 +365,231 @@ function mostrarAba(nome, el) {
   if (nome === 'financeiro') carregarFinanceiro();
 }
 
-function gerarRelatorio(tipo) { alert('Relatório "' + tipo + '" será gerado em breve. Funcionalidade de PDF em desenvolvimento.'); }
+/* ---------------- RELATÓRIOS EM PDF ---------------- */
+/* Importante: só usamos pacientes_agregado_empresa / sessoes_agregado_empresa /
+   pagamentos_agregado_empresa — as views que já garantem, via RLS, que nenhum
+   dado clínico individual (sintomas, resumo de sessão, nome de paciente) chega
+   até aqui. Isso é reforçado no rodapé de cada PDF gerado. */
+
+function novoDocumentoPDF(titulo, empresaNome) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const hoje = new Date().toLocaleDateString('pt-BR');
+
+  doc.setFillColor(45, 74, 107);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.text('Mind', 14, 13);
+  doc.setFontSize(10);
+  doc.text(titulo, 14, 21);
+
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(10);
+  doc.text(`Empresa: ${empresaNome || '—'}`, 14, 38);
+  doc.text(`Emitido em: ${hoje}`, 14, 44);
+
+  return { doc, y: 56 };
+}
+
+function rodapePrivacidade(doc) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text('🔒 Este relatório contém apenas dados agregados e anonimizados. A Mind nunca compartilha diagnóstico,', 14, pageHeight - 16);
+  doc.text('conteúdo de sessões ou qualquer dado clínico individual com empresas patrocinadoras.', 14, pageHeight - 11);
+}
+
+function linhaTabela(doc, y, colunas, larguras) {
+  let x = 14;
+  colunas.forEach((c, i) => { doc.text(String(c), x, y); x += larguras[i]; });
+}
+
+async function gerarRelatorioImpacto() {
+  const { data: colab } = await db.from('pacientes_agregado_empresa').select('id, departamento, total_sessoes, status').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  const { data: sessoes } = ids.length ? await db.from('sessoes_agregado_empresa').select('status, data_hora').in('paciente_id', ids) : { data: [] };
+
+  const totalColab = colab?.length || 0;
+  const ativos = colab?.filter(c => c.status === 'ativo').length || 0;
+  const totalSessoes = sessoes?.length || 0;
+  const realizadas = sessoes?.filter(s => s.status === 'realizada').length || 0;
+  const adesao = totalSessoes ? Math.round(realizadas / totalSessoes * 100) : 0;
+
+  const depts = {};
+  colab?.forEach(c => {
+    const d = c.departamento || 'Sem departamento';
+    depts[d] = (depts[d] || 0) + 1;
+  });
+
+  const { doc, y: y0 } = novoDocumentoPDF('Relatório de Impacto — Visão Semestral', document.getElementById('sidebar-empresa').textContent);
+  let y = y0;
+
+  doc.setFontSize(12);
+  doc.text('Resumo de engajamento', 14, y); y += 8;
+  doc.setFontSize(10);
+  [
+    [`Colaboradores vinculados ao programa`, totalColab],
+    [`Colaboradores ativos em acompanhamento`, ativos],
+    [`Sessões registradas no período`, totalSessoes],
+    [`Sessões realizadas`, realizadas],
+    [`Taxa de adesão`, adesao + '%'],
+  ].forEach(([label, val]) => { doc.text(`${label}:`, 14, y); doc.text(String(val), 150, y); y += 7; });
+
+  y += 6;
+  doc.setFontSize(12);
+  doc.text('Colaboradores por departamento', 14, y); y += 8;
+  doc.setFontSize(10);
+  linhaTabela(doc, y, ['Departamento', 'Colaboradores'], [100, 40]); y += 2;
+  doc.setDrawColor(220, 220, 220);
+  doc.line(14, y, 196, y); y += 6;
+  Object.entries(depts).forEach(([nome, qtd]) => { linhaTabela(doc, y, [nome, qtd], [100, 40]); y += 7; });
+
+  rodapePrivacidade(doc);
+  doc.save('mind-relatorio-impacto.pdf');
+}
+
+async function gerarRelatorioFinanceiro() {
+  const { data: colab } = await db.from('pacientes_agregado_empresa').select('id').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  const { data: pagamentos } = ids.length ? await db.from('pagamentos_agregado_empresa').select('*').in('paciente_id', ids).order('data_pagamento', { ascending: false }) : { data: [] };
+
+  const total = pagamentos?.reduce((s, p) => s + (p.valor_empresa || 40), 0) || 0;
+  const pagos = pagamentos?.filter(p => p.status_pagamento === 'pago').length || 0;
+  const pendentes = (pagamentos?.length || 0) - pagos;
+
+  const { doc, y: y0 } = novoDocumentoPDF('Extrato Financeiro', document.getElementById('sidebar-empresa').textContent);
+  let y = y0;
+
+  doc.setFontSize(12);
+  doc.text('Resumo do período', 14, y); y += 8;
+  doc.setFontSize(10);
+  [
+    [`Total investido`, 'R$ ' + total.toLocaleString('pt-BR')],
+    [`Sessões custeadas`, pagamentos?.length || 0],
+    [`Pagamentos confirmados`, pagos],
+    [`Pagamentos pendentes`, pendentes],
+    [`Valor por sessão custeada`, 'R$ 40,00'],
+  ].forEach(([label, val]) => { doc.text(`${label}:`, 14, y); doc.text(String(val), 150, y); y += 7; });
+
+  y += 6;
+  doc.setFontSize(12);
+  doc.text('Repasses recentes', 14, y); y += 8;
+  doc.setFontSize(9);
+  linhaTabela(doc, y, ['Data', 'Referência', 'Valor', 'Status'], [35, 60, 35, 40]); y += 2;
+  doc.setDrawColor(220, 220, 220);
+  doc.line(14, y, 196, y); y += 6;
+
+  (pagamentos || []).slice(0, 25).forEach((p, i) => {
+    if (y > 275) { doc.addPage(); y = 20; }
+    const data = p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString('pt-BR') : '—';
+    linhaTabela(doc, y, [data, 'Pagamento #' + String(i + 1).padStart(4, '0'), 'R$ ' + (p.valor_empresa || 40).toFixed(2), p.status_pagamento || 'pendente'], [35, 60, 35, 40]);
+    y += 7;
+  });
+
+  rodapePrivacidade(doc);
+  doc.save('mind-extrato-financeiro.pdf');
+}
+
+async function gerarRelatorioAdesao() {
+  const { data: colab } = await db.from('pacientes_agregado_empresa').select('id, departamento, total_sessoes, status').eq('empresa_id', empresaId);
+  const ids = colab?.map(c => c.id) || [];
+  const { data: sessoes } = ids.length ? await db.from('sessoes_agregado_empresa').select('paciente_id, status').in('paciente_id', ids) : { data: [] };
+
+  const porPaciente = {};
+  sessoes?.forEach(s => {
+    if (!porPaciente[s.paciente_id]) porPaciente[s.paciente_id] = { total: 0, realizadas: 0 };
+    porPaciente[s.paciente_id].total++;
+    if (s.status === 'realizada') porPaciente[s.paciente_id].realizadas++;
+  });
+
+  const depts = {};
+  colab?.forEach(c => {
+    const d = c.departamento || 'Sem departamento';
+    if (!depts[d]) depts[d] = { colaboradores: 0, sessoesTotal: 0, sessoesRealizadas: 0 };
+    depts[d].colaboradores++;
+    const info = porPaciente[c.id] || { total: 0, realizadas: 0 };
+    depts[d].sessoesTotal += info.total;
+    depts[d].sessoesRealizadas += info.realizadas;
+  });
+
+  const { doc, y: y0 } = novoDocumentoPDF('Adesão por Departamento', document.getElementById('sidebar-empresa').textContent);
+  let y = y0;
+
+  doc.setFontSize(12);
+  doc.text('Engajamento por equipe', 14, y); y += 8;
+  doc.setFontSize(9);
+  linhaTabela(doc, y, ['Departamento', 'Colaboradores', 'Sessões', 'Adesão'], [70, 40, 30, 30]); y += 2;
+  doc.setDrawColor(220, 220, 220);
+  doc.line(14, y, 196, y); y += 6;
+
+  Object.entries(depts).forEach(([nome, d]) => {
+    const pct = d.sessoesTotal ? Math.round(d.sessoesRealizadas / d.sessoesTotal * 100) : 0;
+    linhaTabela(doc, y, [nome, d.colaboradores, d.sessoesTotal, pct + '%'], [70, 40, 30, 30]);
+    y += 7;
+  });
+
+  if (!Object.keys(depts).length) { doc.setFontSize(10); doc.text('Sem colaboradores vinculados ainda.', 14, y); }
+
+  rodapePrivacidade(doc);
+  doc.save('mind-adesao-departamento.pdf');
+}
+
+function gerarCartaPrivacidade() {
+  const { doc, y: y0 } = novoDocumentoPDF('Carta de Privacidade — Para colaboradores', document.getElementById('sidebar-empresa').textContent);
+  let y = y0;
+
+  doc.setFontSize(10);
+  const paragrafos = [
+    'Sua empresa oferece acesso à psicoterapia através da Mind como parte de um benefício de saúde mental. Este documento explica como sua privacidade é protegida nesse processo.',
+    '',
+    'O que sua empresa NUNCA vê:',
+    '• Diagnóstico ou hipótese clínica',
+    '• Conteúdo de qualquer sessão de terapia',
+    '• Registros de sintomas, humor, ansiedade ou qualquer dado clínico individual',
+    '• Seu nome associado a qualquer informação de saúde',
+    '',
+    'O que sua empresa recebe:',
+    '• Números agregados e anônimos (ex.: "42 colaboradores atendidos este mês")',
+    '• Indicadores de engajamento por departamento, sem identificar pessoas',
+    '• Informações financeiras sobre o investimento total no programa',
+    '',
+    'Sua relação terapêutica é inteiramente confidencial entre você e seu psicólogo, protegida pelo sigilo profissional e pela LGPD (Lei Geral de Proteção de Dados). A Mind atua como intermediária tecnológica e financeira, nunca como parte do seu tratamento.',
+    '',
+    'Dúvidas sobre privacidade podem ser encaminhadas diretamente à Mind pelos canais oficiais da plataforma.'
+  ];
+
+  paragrafos.forEach(p => {
+    const linhas = doc.splitTextToSize(p, 180);
+    linhas.forEach(l => {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(l, 14, y);
+      y += 6;
+    });
+  });
+
+  doc.save('mind-carta-privacidade.pdf');
+}
+
+async function gerarRelatorio(tipo) {
+  const btnMap = { impacto: 'btn-relatorio-impacto', financeiro: 'btn-relatorio-financeiro', adesao: 'btn-relatorio-adesao', privacidade: 'btn-relatorio-privacidade' };
+  const btn = document.getElementById(btnMap[tipo]);
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Gerando...';
+
+  try {
+    if (tipo === 'impacto') await gerarRelatorioImpacto();
+    else if (tipo === 'financeiro') await gerarRelatorioFinanceiro();
+    else if (tipo === 'adesao') await gerarRelatorioAdesao();
+    else if (tipo === 'privacidade') gerarCartaPrivacidade();
+  } catch (e) {
+    alert('Não foi possível gerar o relatório: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
 
 async function sair() { await db.auth.signOut(); window.location.href = 'login.html'; }
 
