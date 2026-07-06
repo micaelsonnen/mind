@@ -78,6 +78,35 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 .form-group select, .form-group textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px; }
 .save-btn { background: var(--success); color: #F7F4EF; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 8px; font-size: 14px; }
 .loading { text-align: center; color: var(--muted); padding: 40px; }
+
+/* Linha do tempo */
+.timeline-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+.timeline-item { position: relative; padding-bottom: 22px; }
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot { position: absolute; left: -28px; top: 3px; width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--surface); }
+.timeline-dot.sessao { background: var(--navy); }
+.timeline-dot.hipotese { background: var(--sage); }
+.timeline-dot.intercorrencia-leve { background: #b45309; }
+.timeline-dot.intercorrencia-moderada { background: #d97706; }
+.timeline-dot.intercorrencia-grave { background: var(--error); }
+.timeline-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.timeline-card .tc-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.timeline-card .tc-tipo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+.timeline-card .tc-data { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.timeline-card .tc-titulo { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.timeline-card .tc-desc { font-size: 13px; color: var(--muted); }
+
+/* Hipótese diagnóstica */
+.hipotese-atual { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.hipotese-atual .h-cid { font-size: 16px; font-weight: 700; color: var(--navy); }
+.hipotese-atual .h-desc { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.hipotese-historico-item { font-size: 12px; color: var(--muted); padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.hipotese-historico-item:last-child { border-bottom: none; }
+.btn-secundario { background: none; border: 1.5px solid var(--border); color: var(--text); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.form-inline { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 12px; display: none; }
+.form-inline.open { display: block; }
 </style>
 </head>
 <body>
@@ -96,6 +125,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
   <div class="tabs">
     <button class="tab active" onclick="abrirTab('visao', this)">Visão Geral</button>
     <button class="tab" onclick="abrirTab('evolucao', this)">Evolução</button>
+    <button class="tab" onclick="abrirTab('timeline', this)">Linha do tempo</button>
     <button class="tab" onclick="abrirTab('sessoes', this)">Sessões</button>
     <button class="tab" onclick="abrirTab('anamnese', this)">Anamnese</button>
     <button class="tab" onclick="abrirTab('financeiro', this)">Financeiro</button>
@@ -123,6 +153,25 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
     </div>
   </div>
 
+  <!-- LINHA DO TEMPO -->
+  <div id="tab-timeline" class="tab-content">
+    <div class="card">
+      <div class="timeline-toolbar">
+        <h3 style="margin:0">🧭 Linha do tempo do tratamento</h3>
+        <button class="btn-secundario" onclick="toggleFormIntercorrencia()">+ Registrar intercorrência</button>
+      </div>
+      <div class="form-inline" id="form-intercorrencia">
+        <div class="form-group"><label>Data</label><input type="date" id="ic-data" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px"></div>
+        <div class="form-group"><label>Gravidade</label>
+          <select id="ic-gravidade"><option value="leve">Leve</option><option value="moderada">Moderada</option><option value="grave">Grave</option></select>
+        </div>
+        <div class="form-group"><label>Descrição</label><textarea id="ic-descricao" rows="2" placeholder="Ex: crise de ansiedade fora da sessão, mudança de emprego, luto..."></textarea></div>
+        <button class="save-btn" onclick="salvarIntercorrencia()">Salvar intercorrência</button>
+      </div>
+      <div id="lista-timeline" style="margin-top:18px"><div class="loading">Carregando...</div></div>
+    </div>
+  </div>
+
   <!-- SESSÕES -->
   <div id="tab-sessoes" class="tab-content">
     <div class="card">
@@ -138,6 +187,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
         <div class="slider-row"><label>Ansiedade <span id="v-ansiedade">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-ansiedade').textContent=this.value"></div>
         <div class="slider-row"><label>Sono <span id="v-sono">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-sono').textContent=this.value"></div>
         <div class="slider-row"><label>Humor <span id="v-humor">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-humor').textContent=this.value"></div>
+        <div class="slider-row"><label>Funcionamento no trabalho/estudos <span id="v-func-ocup">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-func-ocup').textContent=this.value"></div>
+        <div class="slider-row"><label>Funcionamento social <span id="v-func-social">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-func-social').textContent=this.value"></div>
+        <div class="slider-row"><label>Adesão ao tratamento <span id="v-adesao">5</span></label><input type="range" min="0" max="10" value="5" oninput="document.getElementById('v-adesao').textContent=this.value"></div>
         <div class="form-group"><label>Resumo da sessão</label><textarea id="f-resumo" rows="3" placeholder="Tópicos abordados, percepções..."></textarea></div>
         <div class="form-group"><label>Tarefa combinada</label><textarea id="f-tarefa" rows="2" placeholder="Exercício ou reflexão para casa..."></textarea></div>
         <button class="save-btn" onclick="salvarSessao()">Salvar sessão</button>
@@ -148,6 +200,17 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 
   <!-- ANAMNESE -->
   <div id="tab-anamnese" class="tab-content">
+    <div class="card">
+      <h3>🧬 Hipótese diagnóstica</h3>
+      <div id="hipotese-atual-card"><div class="loading">Carregando...</div></div>
+      <button class="btn-secundario" onclick="toggleFormHipotese()">+ Atualizar hipótese diagnóstica</button>
+      <div class="form-inline" id="form-hipotese">
+        <div class="form-group"><label>CID</label><input type="text" id="hip-cid" placeholder="Ex: F41.1" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px"></div>
+        <div class="form-group"><label>Descrição / justificativa clínica</label><textarea id="hip-descricao" rows="2"></textarea></div>
+        <button class="save-btn" onclick="salvarHipotese()">Registrar nova hipótese</button>
+      </div>
+      <div id="hipotese-historico" style="margin-top:16px"></div>
+    </div>
     <div class="card" id="dados-anamnese"><div class="loading">Carregando...</div></div>
   </div>
 
@@ -223,7 +286,7 @@ async function carregarVisaoGeral() {
   }).join('') || '<p style="color:var(--muted);font-size:14px">Sem dados de sintomas</p>';
 
   const elA = document.getElementById('areas-visao');
-  const areas = [['Trabalho', paciente.area_trabalho], ['Social', paciente.area_social], ['Saúde', paciente.area_saude]];
+  const areas = [['Funcionamento no trabalho/estudos', s?.funcionamento_ocupacional], ['Funcionamento social', s?.funcionamento_social], ['Adesão ao tratamento', s?.adesao]];
   elA.innerHTML = areas.filter(([, v]) => v != null).map(([nome, val]) => {
     const cor = val >= 7 ? '#5B8C6E' : val >= 4 ? '#b45309' : '#b91c1c';
     return `<div class="sintoma-row">
@@ -279,18 +342,170 @@ function renderEvolucao(sessoes) {
 
 async function carregarAnamnese() {
   const el = document.getElementById('dados-anamnese');
+  const { data: anamnese } = await db.from('anamneses').select('*').eq('paciente_id', pacienteId).order('criado_em', { ascending: false }).limit(1).maybeSingle();
+
+  if (!anamnese) {
+    el.innerHTML = `<h3>📋 Dados da anamnese</h3><p style="color:var(--muted);font-size:14px">Nenhuma anamnese registrada para este paciente ainda.</p>`;
+    return;
+  }
+
   el.innerHTML = `<h3>📋 Dados da anamnese</h3>
     <div class="field-row">
       <div class="field"><label>Nome</label><p>${paciente.nome || '—'}</p></div>
-      <div class="field"><label>Data de nascimento</label><p>${paciente.data_nascimento ? new Date(paciente.data_nascimento).toLocaleDateString('pt-BR') : '—'}</p></div>
+      <div class="field"><label>Data de nascimento</label><p>${anamnese.data_nascimento ? new Date(anamnese.data_nascimento).toLocaleDateString('pt-BR') : '—'}</p></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Diagnóstico CID-10</label><p>${paciente.diagnostico_cid || '—'}</p></div>
-      <div class="field"><label>Abordagem</label><p>${paciente.abordagem || '—'}</p></div>
+      <div class="field"><label>Telefone</label><p>${anamnese.telefone || '—'}</p></div>
+      <div class="field"><label>Estado civil / Profissão</label><p>${[anamnese.estado_civil, anamnese.profissao].filter(Boolean).join(' · ') || '—'}</p></div>
     </div>
-    <div class="field"><label>Queixa principal</label><p>${paciente.queixa_principal || '—'}</p></div>
-    <div class="field" style="margin-top:16px"><label>Objetivos terapêuticos</label><p>${paciente.objetivos || '—'}</p></div>
-    <div class="field" style="margin-top:16px"><label>Histórico</label><p>${paciente.historico || '—'}</p></div>`;
+    <div class="field"><label>Queixa principal</label><p>${anamnese.queixa_principal || '—'}</p></div>
+    <div class="field" style="margin-top:16px"><label>História clínica</label><p>${anamnese.historia_clinica || '—'}</p></div>
+    <div class="field" style="margin-top:16px"><label>História familiar</label><p>${anamnese.historia_familiar || '—'}</p></div>
+    <div class="field" style="margin-top:16px"><label>História laboral</label><p>${anamnese.historia_laboral || '—'}</p></div>
+    <div class="field" style="margin-top:16px"><label>Rede de apoio</label><p>${anamnese.rede_apoio || '—'}</p></div>
+    <div class="field" style="margin-top:16px"><label>Objetivos terapêuticos</label><p>${anamnese.objetivos_terapeuticos || '—'}</p></div>`;
+}
+
+/* ---------------- HIPÓTESE DIAGNÓSTICA ---------------- */
+
+function toggleFormHipotese() {
+  document.getElementById('form-hipotese').classList.toggle('open');
+}
+
+async function carregarHipoteses() {
+  const { data } = await db.from('hipoteses_diagnosticas').select('*').eq('paciente_id', pacienteId).order('criado_em', { ascending: false });
+
+  const atualEl = document.getElementById('hipotese-atual-card');
+  const historicoEl = document.getElementById('hipotese-historico');
+
+  if (!data?.length) {
+    atualEl.innerHTML = '<p style="color:var(--muted);font-size:14px">Nenhuma hipótese diagnóstica registrada ainda.</p>';
+    historicoEl.innerHTML = '';
+    return;
+  }
+
+  const atual = data.find(h => h.ativa) || data[0];
+  atualEl.innerHTML = `
+    <div class="hipotese-atual">
+      <div class="h-cid">${atual.cid || 'Sem CID informado'}</div>
+      ${atual.descricao ? `<div class="h-desc">${atual.descricao}</div>` : ''}
+      <div class="h-desc" style="margin-top:6px">Registrada em ${new Date(atual.criado_em).toLocaleDateString('pt-BR')}</div>
+    </div>`;
+
+  const anteriores = data.filter(h => h.id !== atual.id);
+  historicoEl.innerHTML = anteriores.length
+    ? `<label style="display:block;font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Histórico de hipóteses anteriores</label>` +
+      anteriores.map(h => `
+        <div class="hipotese-historico-item">
+          <strong>${h.cid || 'Sem CID'}</strong> — ${h.descricao || 'sem descrição'}
+          <span style="float:right">${new Date(h.criado_em).toLocaleDateString('pt-BR')}</span>
+        </div>`).join('')
+    : '';
+}
+
+async function salvarHipotese() {
+  const cid = document.getElementById('hip-cid').value.trim();
+  const descricao = document.getElementById('hip-descricao').value.trim();
+  if (!cid && !descricao) { alert('Informe ao menos o CID ou uma descrição.'); return; }
+
+  // Desativa hipóteses anteriores antes de registrar a nova, preservando o histórico.
+  await db.from('hipoteses_diagnosticas').update({ ativa: false }).eq('paciente_id', pacienteId).eq('ativa', true);
+
+  const { error } = await db.from('hipoteses_diagnosticas').insert({
+    paciente_id: pacienteId,
+    psicologo_id: paciente.psicologo_id,
+    cid, descricao,
+    ativa: true
+  });
+
+  if (error) { alert('Erro ao registrar hipótese: ' + error.message); return; }
+
+  document.getElementById('hip-cid').value = '';
+  document.getElementById('hip-descricao').value = '';
+  document.getElementById('form-hipotese').classList.remove('open');
+  carregarHipoteses();
+}
+
+/* ---------------- INTERCORRÊNCIAS ---------------- */
+
+function toggleFormIntercorrencia() {
+  const form = document.getElementById('form-intercorrencia');
+  form.classList.toggle('open');
+  if (form.classList.contains('open') && !document.getElementById('ic-data').value) {
+    document.getElementById('ic-data').value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function salvarIntercorrencia() {
+  const data = document.getElementById('ic-data').value || new Date().toISOString().slice(0, 10);
+  const gravidade = document.getElementById('ic-gravidade').value;
+  const descricao = document.getElementById('ic-descricao').value.trim();
+  if (!descricao) { alert('Descreva a intercorrência.'); return; }
+
+  const { error } = await db.from('intercorrencias').insert({
+    paciente_id: pacienteId,
+    psicologo_id: paciente.psicologo_id,
+    data, gravidade, descricao
+  });
+
+  if (error) { alert('Erro ao registrar intercorrência: ' + error.message); return; }
+
+  document.getElementById('ic-descricao').value = '';
+  document.getElementById('form-intercorrencia').classList.remove('open');
+  carregarLinhaDoTempo();
+}
+
+/* ---------------- LINHA DO TEMPO CONSOLIDADA ---------------- */
+
+async function carregarLinhaDoTempo() {
+  const el = document.getElementById('lista-timeline');
+  el.innerHTML = '<div class="loading">Carregando...</div>';
+
+  const [{ data: sessoes }, { data: hipoteses }, { data: intercorrencias }] = await Promise.all([
+    db.from('sessoes').select('id, data_hora, status, resumo_sessao').eq('paciente_id', pacienteId).eq('status', 'realizada'),
+    db.from('hipoteses_diagnosticas').select('*').eq('paciente_id', pacienteId),
+    db.from('intercorrencias').select('*').eq('paciente_id', pacienteId)
+  ]);
+
+  const eventos = [];
+
+  (sessoes || []).forEach(s => eventos.push({
+    tipo: 'sessao', dotClass: 'sessao', data: s.data_hora,
+    titulo: 'Sessão realizada',
+    desc: s.resumo_sessao || 'Sem resumo registrado'
+  }));
+
+  (hipoteses || []).forEach(h => eventos.push({
+    tipo: 'hipótese diagnóstica', dotClass: 'hipotese', data: h.criado_em,
+    titulo: h.cid ? `Hipótese: ${h.cid}` : 'Hipótese diagnóstica atualizada',
+    desc: h.descricao || (h.ativa ? 'Definida como hipótese ativa' : 'Hipótese substituída')
+  }));
+
+  (intercorrencias || []).forEach(i => eventos.push({
+    tipo: `intercorrência ${i.gravidade || 'leve'}`, dotClass: 'intercorrencia-' + (i.gravidade || 'leve'), data: i.data,
+    titulo: 'Intercorrência',
+    desc: i.descricao
+  }));
+
+  if (!eventos.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:14px">Ainda não há eventos registrados para este paciente.</p>';
+    return;
+  }
+
+  eventos.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+  el.innerHTML = `<div class="timeline">` + eventos.map(e => `
+    <div class="timeline-item">
+      <div class="timeline-dot ${e.dotClass}"></div>
+      <div class="timeline-card">
+        <div class="tc-header">
+          <span class="tc-tipo">${e.tipo}</span>
+          <span class="tc-data">${e.data ? new Date(e.data).toLocaleDateString('pt-BR') : '—'}</span>
+        </div>
+        <div class="tc-titulo">${e.titulo}</div>
+        <div class="tc-desc">${e.desc}</div>
+      </div>
+    </div>`).join('') + `</div>`;
 }
 
 async function carregarPagamentos() {
@@ -310,8 +525,9 @@ function abrirTab(nome, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + nome).classList.add('active');
   el.classList.add('active');
-  if (nome === 'anamnese') carregarAnamnese();
+  if (nome === 'anamnese') { carregarAnamnese(); carregarHipoteses(); }
   if (nome === 'financeiro') carregarPagamentos();
+  if (nome === 'timeline') carregarLinhaDoTempo();
 }
 
 function toggleForm() {
@@ -330,6 +546,9 @@ async function salvarSessao() {
   const ansiedade = parseInt(document.getElementById('v-ansiedade').textContent);
   const sono = parseInt(document.getElementById('v-sono').textContent);
   const humor = parseInt(document.getElementById('v-humor').textContent);
+  const funcionamento_ocupacional = parseInt(document.getElementById('v-func-ocup').textContent);
+  const funcionamento_social = parseInt(document.getElementById('v-func-social').textContent);
+  const adesao = parseInt(document.getElementById('v-adesao').textContent);
 
   const { data: sessaoData, error } = await db.from('sessoes').insert({
     paciente_id: pacienteId,
@@ -343,7 +562,11 @@ async function salvarSessao() {
   if (error) { alert('Erro ao salvar: ' + error.message); return; }
 
   if (status === 'realizada') {
-    await db.from('sintomas').insert({ sessao_id: sessaoData.id, paciente_id: pacienteId, ansiedade, sono, humor });
+    await db.from('sintomas').insert({
+      sessao_id: sessaoData.id, paciente_id: pacienteId,
+      ansiedade, sono, humor,
+      funcionamento_ocupacional, funcionamento_social, adesao
+    });
   }
 
   // Atualiza contador de sessões
