@@ -323,7 +323,7 @@ async function carregarVisaoGeral() {
 }
 
 async function carregarSessoes() {
-  const { data } = await db.from('sessoes').select('*, sintomas(ansiedade, sono, humor)').eq('paciente_id', pacienteId).order('data_hora', { ascending: false });
+  const { data } = await db.from('sessoes').select('*, sintomas(ansiedade, sono, humor, funcionamento_ocupacional, funcionamento_social, adesao)').eq('paciente_id', pacienteId).order('data_hora', { ascending: false });
   
   const el = document.getElementById('lista-sessoes');
   if (!data?.length) { el.innerHTML = '<div class="loading">Nenhuma sessão registrada</div>'; return; }
@@ -331,12 +331,13 @@ async function carregarSessoes() {
   el.innerHTML = data.map(s => {
     const dt = s.data_hora ? new Date(s.data_hora).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '—';
     const statusCls = { realizada: 'ok', falta: 'erro', agendada: 'alerta' }[s.status] || 'alerta';
+    const sint = s.sintomas?.[0];
     return `<div class="sessao-item">
       <div class="sessao-header">
         <span class="sessao-data">${dt}</span>
         <span class="badge ${statusCls}">${s.status}</span>
-        ${s.sintomas?.[0] ? `<span style="font-size:12px;color:var(--muted)">Ans:${s.sintomas[0].ansiedade} Sono:${s.sintomas[0].sono} Humor:${s.sintomas[0].humor}</span>` : ''}
       </div>
+      ${sint ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Ans:${sint.ansiedade} · Sono:${sint.sono} · Humor:${sint.humor} · Trabalho:${sint.funcionamento_ocupacional ?? '—'} · Social:${sint.funcionamento_social ?? '—'} · Adesão:${sint.adesao ?? '—'}</div>` : ''}
       ${s.resumo_sessao ? `<p class="sessao-resumo">${s.resumo_sessao}</p>` : ''}
       ${s.tarefa_casa ? `<p style="font-size:12px;color:var(--accent);margin-top:6px">📌 ${s.tarefa_casa}</p>` : ''}
     </div>`;

@@ -203,6 +203,16 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
         <div class="form-group"><label>Idade máxima atendida</label><input type="number" id="at-idade-max" value="65"></div>
       </div>
 
+      <div class="form-group">
+        <label class="required">Disponibilidade geral</label>
+        <select id="at-disponibilidade">
+          <option value="">Selecione</option>
+          <option value="manha">Manhã (8h–12h)</option>
+          <option value="tarde">Tarde (13h–18h)</option>
+          <option value="noite">Noite (18h–21h)</option>
+        </select>
+      </div>
+
       <div id="msg-atendimento" class="msg"></div>
       <div class="actions"><button class="btn-salvar" onclick="salvarAtendimento()">Salvar e continuar</button></div>
     </div>
@@ -419,14 +429,15 @@ async function salvarAtendimento() {
   const resumo = document.getElementById('at-resumo').value.trim();
   const sobre = document.getElementById('at-sobre').value.trim();
   const abordagem = document.getElementById('at-abordagem').value;
+  const disponibilidade = document.getElementById('at-disponibilidade').value;
 
-  if (!resumo || !sobre || !abordagem) {
-    mostrarMsg('msg-atendimento', 'Preencha resumo, sobre mim e abordagem.', 'error');
+  if (!resumo || !sobre || !abordagem || !disponibilidade) {
+    mostrarMsg('msg-atendimento', 'Preencha resumo, sobre mim, abordagem e disponibilidade.', 'error');
     return;
   }
 
   const { error } = await db.from('psicologos').update({
-    resumo, sobre_mim: sobre, abordagem,
+    resumo, sobre_mim: sobre, abordagem, disponibilidade,
     formacao: document.getElementById('at-formacao').value.trim(),
     especialidades: tags.especialidades,
     temas: tags.temas,
