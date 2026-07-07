@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind — Meus Dados</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F4EF; --surface: #FFFFFF; --surface2: #f0ece6; --border: #E2DED8;
+  --navy: #2D4A6B; --sage: #5B8C6E; --text: #1A2332; --muted: #6B7A8D; --error: #b91c1c;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 28px; }
+.topbar a { color: var(--muted); text-decoration: none; font-size: 14px; }
+.wrap { max-width: 620px; margin: 0 auto; padding: 40px 20px 80px; }
+h1 { font-size: 24px; margin-bottom: 6px; }
+.sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 18px; }
+.card h3 { font-size: 16px; margin-bottom: 6px; }
+.card p { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+.btn { border: none; padding: 11px 20px; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.btn-primario { background: linear-gradient(135deg, var(--navy), var(--sage)); color: white; }
+.btn-perigo { background: none; border: 1.5px solid var(--error); color: var(--error); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.aviso { background: rgba(180,83,9,0.08); border: 1px solid rgba(180,83,9,0.2); color: #92400e; padding: 12px 16px; border-radius: 10px; font-size: 12px; margin-top: 14px; line-height: 1.5; }
+textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: inherit; font-size: 13px; margin-bottom: 12px; resize: vertical; }
+.status-pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-top: 10px; }
+.status-pill.pendente { background: rgba(180,83,9,0.12); color: #92400e; }
+.status-pill.processada { background: rgba(91,140,110,0.12); color: var(--sage); }
+.status-pill.recusada { background: rgba(185,28,28,0.12); color: var(--error); }
+.loading { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="topbar"><a href="#" onclick="history.back()">← Voltar</a></div>
+
+<div class="wrap">
+  <h1>Meus dados</h1>
+  <p class="sub">Conforme a LGPD (Lei Geral de Proteção de Dados), você pode acessar, baixar e solicitar a exclusão dos seus dados a qualquer momento.</p>
+
+  <div id="conteudo"><p class="loading">Carregando...</p></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uqzmkctsjvjpohzbvtjv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2Fp_Vyz1feYA03TEUZortQ_fgbFRwEW';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let contaEmail = null;
+let contaTipo = null; // 'paciente' | 'psicologo' | 'empresa'
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+  contaEmail = session.user.email;
+
+  const { data: psi } = await db.from('psicologos').select('id').eq('email', contaEmail).maybeSingle();
+  if (psi) { contaTipo = 'psicologo'; }
+  else {
+    const { data: emp } = await db.from('empresas').select('id').eq('email', contaEmail).maybeSingle();
+    if (emp) { contaTipo = 'empresa'; }
+    else { contaTipo = 'paciente'; }
+  }
+
+  await renderizar();
+}
+
+async function renderizar() {
+  const { data: solicitacao } = await db.from('solicitacoes_exclusao').select('*').eq('email', contaEmail).order('criado_em', { ascending: false }).limit(1).maybeSingle();
+
+  document.getElementById('conteudo').innerHTML = `
+    <div class="card">
+      <h3>📦 Baixar meus dados</h3>
+      <p>Gera um arquivo com todas as informações que a Mind guarda sobre sua conta (${contaTipo === 'psicologo' ? 'perfil profissional' : contaTipo === 'empresa' ? 'dados da empresa e colaboradores vinculados' : 'perfil e histórico clínico'}).</p>
+      <button class="btn btn-primario" id="btn-baixar" onclick="baixarDados()">Baixar meus dados (.json)</button>
+    </div>
+
+    <div class="card">
+      <h3>🗑️ Solicitar exclusão da conta</h3>
+      ${contaTipo === 'paciente' || contaTipo === 'psicologo' ? `
+        <div class="aviso">⚠️ Dado de prontuário psicológico tem retenção obrigatória por resolução do Conselho Federal de Psicologia, mesmo após a solicitação de exclusão. Por isso, sua solicitação é avaliada por uma pessoa da nossa equipe antes de qualquer exclusão — dados não-clínicos são removidos; dados clínicos seguem retidos pelo prazo legal e depois removidos ou anonimizados.</div>
+      ` : ''}
+      ${solicitacao && solicitacao.status !== 'recusada' ? `
+        <p style="margin-top:14px">Você já tem uma solicitação registrada:</p>
+        <span class="status-pill ${solicitacao.status}">${solicitacao.status}</span>
+        ${solicitacao.resposta_admin ? `<p style="margin-top:10px"><strong>Resposta:</strong> ${escapeHtml(solicitacao.resposta_admin)}</p>` : ''}
+      ` : `
+        <textarea id="motivo-exclusao" rows="2" placeholder="Motivo (opcional)"></textarea>
+        <button class="btn btn-perigo" onclick="solicitarExclusao()">Solicitar exclusão da conta</button>
+      `}
+    </div>
+  `;
+}
+
+async function baixarDados() {
+  const btn = document.getElementById('btn-baixar');
+  btn.disabled = true;
+  btn.textContent = 'Preparando...';
+
+  const pacote = { conta: { email: contaEmail, tipo: contaTipo, exportado_em: new Date().toISOString() } };
+
+  try {
+    if (contaTipo === 'psicologo') {
+      const { data: perfil } = await db.from('psicologos').select('*').eq('email', contaEmail).maybeSingle();
+      pacote.perfil = perfil;
+    } else if (contaTipo === 'empresa') {
+      const { data: perfil } = await db.from('empresas').select('*').eq('email', contaEmail).maybeSingle();
+      pacote.perfil = perfil;
+    } else {
+      const { data: perfil } = await db.from('pacientes').select('*').eq('email', contaEmail).maybeSingle();
+      pacote.perfil = perfil;
+      if (perfil) {
+        const [{ data: anamnese }, { data: sessoes }, { data: hipoteses }, { data: pagamentos }] = await Promise.all([
+          db.from('anamneses').select('*').eq('paciente_id', perfil.id),
+          db.from('sessoes').select('*').eq('paciente_id', perfil.id),
+          db.from('hipoteses_diagnosticas').select('*').eq('paciente_id', perfil.id),
+          db.from('pagamentos').select('*').eq('paciente_id', perfil.id)
+        ]);
+        pacote.anamnese = anamnese;
+        pacote.sessoes = sessoes;
+        pacote.hipoteses_diagnosticas = hipoteses;
+        pacote.pagamentos = pagamentos;
+      }
+    }
+
+    const blob = new Blob([JSON.stringify(pacote, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mind-meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Erro ao gerar o arquivo: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Baixar meus dados (.json)';
+  }
+}
+
+async function solicitarExclusao() {
+  const motivo = document.getElementById('motivo-exclusao').value.trim();
+  const { error } = await db.from('solicitacoes_exclusao').insert({ email: contaEmail, tipo_conta: contaTipo, motivo: motivo || null });
+  if (error) { alert('Erro ao registrar solicitação: ' + error.message); return; }
+  await renderizar();
+}
+
+init();
+</script>
+</body>
+</html>

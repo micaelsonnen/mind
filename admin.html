@@ -78,7 +78,9 @@ async function init() {
     return;
   }
 
-  renderizar(pendentes || []);
+  const { data: solicitacoes } = await db.from('solicitacoes_exclusao').select('*').eq('status', 'pendente').order('criado_em');
+
+  renderizar(pendentes || [], solicitacoes || []);
 }
 
 async function urlAssinada(path) {
@@ -88,35 +90,62 @@ async function urlAssinada(path) {
   return data.signedUrl;
 }
 
-function renderizar(lista) {
+function renderizar(lista, solicitacoes) {
   const el = document.getElementById('conteudo');
 
-  if (!lista.length) {
-    el.innerHTML = `<h1>Aprovação de psicólogos</h1><p class="sub">Cadastros aguardando análise.</p><div class="empty">✅ Nenhum cadastro pendente no momento.</div>`;
-    return;
-  }
-
-  el.innerHTML = `<h1>Aprovação de psicólogos</h1><p class="sub">${lista.length} cadastro(s) aguardando análise.</p>` +
-    lista.map(p => `
-      <div class="card" id="card-${p.id}">
+  const blocoSolicitacoes = `
+    <h1 style="margin-top:0">Solicitações de exclusão (LGPD)</h1>
+    <p class="sub">${solicitacoes.length} solicitação(ões) pendente(s).</p>
+    ${!solicitacoes.length ? '<div class="empty" style="padding:24px">Nenhuma solicitação pendente.</div>' : solicitacoes.map(s => `
+      <div class="card" id="solic-${s.id}">
         <div class="card-header">
           <div>
-            <div class="nome">${escapeHtml(p.nome)}</div>
-            <div class="meta">${escapeHtml(p.email)} · CRP ${escapeHtml(p.crp)}/${escapeHtml(p.uf_crp)} · ${escapeHtml(p.celular) || 'sem telefone'}</div>
-            <div class="meta">${escapeHtml(p.formacao) || 'formação não informada'}</div>
+            <div class="nome">${escapeHtml(s.email)}</div>
+            <div class="meta">Conta: ${escapeHtml(s.tipo_conta) || '—'} · pedido em ${new Date(s.criado_em).toLocaleDateString('pt-BR')}</div>
+            ${s.motivo ? `<div class="meta">Motivo: ${escapeHtml(s.motivo)}</div>` : ''}
           </div>
-          <span class="badge em_analise">Em análise</span>
         </div>
-        <div class="docs" id="docs-${p.id}"><span class="meta">Carregando documentos...</span></div>
         <div class="actions">
-          <button class="btn btn-aprovar" onclick="aprovar('${p.id}')">Aprovar</button>
-          <input type="text" class="motivo-input" id="motivo-${p.id}" placeholder="Motivo da recusa (opcional)">
-          <button class="btn btn-recusar" onclick="recusar('${p.id}')">Recusar</button>
+          <input type="text" class="motivo-input" id="resp-${s.id}" placeholder="Resposta para o usuário (ex: dados não-clínicos removidos em [data]; dados clínicos retidos até [data] por exigência legal)">
+          <button class="btn btn-aprovar" onclick="processarSolicitacao('${s.id}', 'processada')">Marcar como processada</button>
+          <button class="btn btn-recusar" onclick="processarSolicitacao('${s.id}', 'recusada')">Recusar</button>
         </div>
       </div>
-    `).join('');
+    `).join('')}
+  `;
+
+  const blocoPsicologos = !lista.length
+    ? `<h1>Aprovação de psicólogos</h1><p class="sub">Cadastros aguardando análise.</p><div class="empty">✅ Nenhum cadastro pendente no momento.</div>`
+    : `<h1>Aprovação de psicólogos</h1><p class="sub">${lista.length} cadastro(s) aguardando análise.</p>` +
+      lista.map(p => `
+        <div class="card" id="card-${p.id}">
+          <div class="card-header">
+            <div>
+              <div class="nome">${escapeHtml(p.nome)}</div>
+              <div class="meta">${escapeHtml(p.email)} · CRP ${escapeHtml(p.crp)}/${escapeHtml(p.uf_crp)} · ${escapeHtml(p.celular) || 'sem telefone'}</div>
+              <div class="meta">${escapeHtml(p.formacao) || 'formação não informada'}</div>
+            </div>
+            <span class="badge em_analise">Em análise</span>
+          </div>
+          <div class="docs" id="docs-${p.id}"><span class="meta">Carregando documentos...</span></div>
+          <div class="actions">
+            <button class="btn btn-aprovar" onclick="aprovar('${p.id}')">Aprovar</button>
+            <input type="text" class="motivo-input" id="motivo-${p.id}" placeholder="Motivo da recusa (opcional)">
+            <button class="btn btn-recusar" onclick="recusar('${p.id}')">Recusar</button>
+          </div>
+        </div>
+      `).join('');
+
+  el.innerHTML = blocoSolicitacoes + '<hr style="border:none;border-top:1px solid var(--border);margin:32px 0">' + blocoPsicologos;
 
   lista.forEach(carregarDocs);
+}
+
+async function processarSolicitacao(id, status) {
+  const resposta = document.getElementById('resp-' + id).value.trim();
+  const { error } = await db.from('solicitacoes_exclusao').update({ status, resposta_admin: resposta || null, processado_em: new Date().toISOString() }).eq('id', id);
+  if (error) { alert('Erro: ' + error.message); return; }
+  document.getElementById('solic-' + id).remove();
 }
 
 async function carregarDocs(p) {
