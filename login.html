@@ -209,6 +209,11 @@ function mostrarMsg(texto, tipo) {
 async function redirecionarPorPerfil(user) {
   const email = user.email;
 
+  // 0. Checa se é admin — checagem primeiro, pois uma conta admin não
+  // necessariamente tem ficha de psicólogo/empresa/paciente.
+  const { data: admin } = await db.from('admins').select('id').eq('email', email).maybeSingle();
+  if (admin) { window.location.href = 'admin.html'; return; }
+
   // 1. Checa se é psicóloga
   const { data: psi } = await db.from('psicologos').select('id, status_cadastro').eq('email', email).maybeSingle();
   if (psi) {

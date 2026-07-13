@@ -65,10 +65,18 @@ async function init() {
 
   document.getElementById('quem-esta').textContent = session.user.email;
 
+  const { data: souAdmin } = await db.from('admins').select('nome').eq('email', session.user.email).maybeSingle();
+  if (!souAdmin) {
+    document.getElementById('conteudo').innerHTML = `<div class="negado">🔒 Acesso negado. Esta conta não tem permissão de administrador.</div>`;
+    return;
+  }
+  document.getElementById('quem-esta').textContent = (souAdmin.nome || session.user.email) + ' · admin';
+
   // Checagem de acesso no front-end é só conveniência de UX — a
-  // segurança de verdade está nas policies de RLS (só o e-mail admin
-  // consegue de fato ler/editar as linhas de `psicologos`). Mesmo que
-  // alguém burle esta tela, o Supabase nega a consulta.
+  // segurança de verdade está nas policies de RLS (só quem está na
+  // tabela `admins` consegue de fato ler/editar as linhas de
+  // `psicologos`). Mesmo que alguém burle esta tela, o Supabase nega
+  // a consulta.
   const { data: pendentes, error } = await db.from('psicologos')
     .select('id, nome, email, crp, uf_crp, celular, formacao, crp_doc_url, diploma_doc_url, certidao_doc_url, status_cadastro, criado_em')
     .eq('status_cadastro', 'em_analise');

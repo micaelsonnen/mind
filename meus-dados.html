@@ -62,12 +62,16 @@ async function init() {
   if (!session) { window.location.href = 'login.html'; return; }
   contaEmail = session.user.email;
 
-  const { data: psi } = await db.from('psicologos').select('id').eq('email', contaEmail).maybeSingle();
-  if (psi) { contaTipo = 'psicologo'; }
+  const { data: admin } = await db.from('admins').select('id').eq('email', contaEmail).maybeSingle();
+  if (admin) { contaTipo = 'admin'; }
   else {
-    const { data: emp } = await db.from('empresas').select('id').eq('email', contaEmail).maybeSingle();
-    if (emp) { contaTipo = 'empresa'; }
-    else { contaTipo = 'paciente'; }
+    const { data: psi } = await db.from('psicologos').select('id').eq('email', contaEmail).maybeSingle();
+    if (psi) { contaTipo = 'psicologo'; }
+    else {
+      const { data: emp } = await db.from('empresas').select('id').eq('email', contaEmail).maybeSingle();
+      if (emp) { contaTipo = 'empresa'; }
+      else { contaTipo = 'paciente'; }
+    }
   }
 
   await renderizar();
@@ -108,7 +112,10 @@ async function baixarDados() {
   const pacote = { conta: { email: contaEmail, tipo: contaTipo, exportado_em: new Date().toISOString() } };
 
   try {
-    if (contaTipo === 'psicologo') {
+    if (contaTipo === 'admin') {
+      const { data: perfil } = await db.from('admins').select('*').eq('email', contaEmail).maybeSingle();
+      pacote.perfil = perfil;
+    } else if (contaTipo === 'psicologo') {
       const { data: perfil } = await db.from('psicologos').select('*').eq('email', contaEmail).maybeSingle();
       pacote.perfil = perfil;
     } else if (contaTipo === 'empresa') {

@@ -1398,10 +1398,23 @@ function mostrarMsg(texto, tipo) {
 
 async function redirecionarPorPerfil(user) {
   const email = user.email;
-  const { data: psi } = await db.from('psicologos').select('id').eq('email', email).maybeSingle();
-  if (psi) { window.location.href = 'dashboard-psicologo.html'; return; }
+
+  const { data: admin } = await db.from('admins').select('id').eq('email', email).maybeSingle();
+  if (admin) { window.location.href = 'admin.html'; return; }
+
+  const { data: psi } = await db.from('psicologos').select('id, status_cadastro').eq('email', email).maybeSingle();
+  if (psi) {
+    if (psi.status_cadastro && psi.status_cadastro !== 'aprovado') {
+      window.location.href = 'cadastro-status.html';
+    } else {
+      window.location.href = 'dashboard-psicologo.html';
+    }
+    return;
+  }
+
   const { data: emp } = await db.from('empresas').select('id').eq('email', email).maybeSingle();
   if (emp) { window.location.href = 'empresa.html'; return; }
+
   window.location.href = 'dashboard-paciente.html';
 }
 
