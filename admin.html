@@ -182,13 +182,14 @@ function renderPsicologos() {
     <p class="sub">${TODOS_PSICOLOGOS.length} cadastrado(s).</p>
     <input type="text" class="busca" id="busca-psi" placeholder="Buscar por nome ou e-mail..." oninput="filtrarPsicologos()">
     <table><thead><tr><th>Nome</th><th>E-mail</th><th>CRP</th><th>Status</th><th>Cadastro</th></tr></thead><tbody id="tbody-psi"></tbody></table>
+    <div id="detalhe-visualizacao" style="margin-top:20px"></div>
   `;
   desenharPsicologos(TODOS_PSICOLOGOS);
 }
 
 function desenharPsicologos(lista) {
   document.getElementById('tbody-psi').innerHTML = lista.map(p => `
-    <tr>
+    <tr style="cursor:pointer" onclick="abrirEdicao('psicologo', '${p.id}')">
       <td><strong>${escapeHtml(p.nome)}</strong></td>
       <td>${escapeHtml(p.email)}</td>
       <td>${escapeHtml(p.crp)}${p.uf_crp ? '/' + escapeHtml(p.uf_crp) : ''}</td>
@@ -196,6 +197,7 @@ function desenharPsicologos(lista) {
       <td>${p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : '—'}</td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="empty">Nenhum psicólogo encontrado.</td></tr>';
+  if (document.getElementById('detalhe-visualizacao')) document.getElementById('detalhe-visualizacao').innerHTML = '';
 }
 
 function filtrarPsicologos() {
@@ -213,6 +215,7 @@ function renderPacientes() {
     <p class="sub">${TODOS_PACIENTES.length} cadastrado(s). Prontuário clínico só é visível quando o psicólogo autoriza explicitamente (paciente a paciente).</p>
     <input type="text" class="busca" id="busca-pac" placeholder="Buscar por nome ou e-mail..." oninput="filtrarPacientes()">
     <table><thead><tr><th>Nome</th><th>E-mail</th><th>Psicólogo</th><th>Empresa</th><th>Status</th><th>Sessões</th><th>Prontuário</th></tr></thead><tbody id="tbody-pac"></tbody></table>
+    <div id="detalhe-visualizacao" style="margin-top:20px"></div>
     <div id="prontuario-visualizacao" style="margin-top:20px"></div>
   `;
   desenharPacientes(TODOS_PACIENTES);
@@ -223,7 +226,7 @@ function desenharPacientes(lista) {
     const autorizado = AUTORIZACOES_ATIVAS.some(a => a.paciente_id === p.id);
     return `
     <tr>
-      <td><strong>${escapeHtml(p.nome)}</strong></td>
+      <td style="cursor:pointer" onclick="abrirEdicao('paciente', '${p.id}')"><strong>${escapeHtml(p.nome)}</strong></td>
       <td>${escapeHtml(p.email)}</td>
       <td>${escapeHtml(p.psicologos?.nome) || '—'}</td>
       <td>${escapeHtml(p.empresas?.nome) || '—'}</td>
@@ -234,6 +237,7 @@ function desenharPacientes(lista) {
         : `<span class="meta">🔒 Não autorizado</span>`}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="7" class="empty">Nenhum paciente encontrado.</td></tr>';
+  if (document.getElementById('detalhe-visualizacao')) document.getElementById('detalhe-visualizacao').innerHTML = '';
 }
 
 async function verProntuario(pacienteId) {
@@ -295,9 +299,10 @@ function renderEmpresas() {
     <h1>Empresas</h1>
     <p class="sub">${TODAS_EMPRESAS.length} parceira(s).</p>
     <table><thead><tr><th>Nome</th><th>E-mail</th><th>CNPJ</th><th>Plano</th><th>Colaboradores</th></tr></thead><tbody id="tbody-emp"></tbody></table>
+    <div id="detalhe-visualizacao" style="margin-top:20px"></div>
   `;
   document.getElementById('tbody-emp').innerHTML = TODAS_EMPRESAS.map(e => `
-    <tr>
+    <tr style="cursor:pointer" onclick="abrirEdicao('empresa', '${e.id}')">
       <td><strong>${escapeHtml(e.nome)}</strong></td>
       <td>${escapeHtml(e.email)}</td>
       <td>${escapeHtml(e.cnpj) || '—'}</td>
@@ -305,6 +310,138 @@ function renderEmpresas() {
       <td>${TODOS_PACIENTES.filter(p => p.empresa_id === e.id).length}</td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="empty">Nenhuma empresa encontrada.</td></tr>';
+}
+
+/* ---------------- EDIÇÃO DE PERFIL (admin) ---------------- */
+
+const CAMPOS_ENDERECO = [
+  ['endereco_rua', 'Rua'], ['endereco_numero', 'Número'], ['endereco_complemento', 'Complemento'],
+  ['endereco_bairro', 'Bairro'], ['endereco_cep', 'CEP']
+];
+
+function linhaEndereco(prefixoTabela, dados, incluirCidadeEstado) {
+  const camposCidade = incluirCidadeEstado
+    ? [[prefixoTabela === 'psicologos' ? 'cidade' : 'endereco_cidade', 'Cidade'], [prefixoTabela === 'psicologos' ? 'estado' : 'endereco_estado', 'Estado']]
+    : [];
+  return [...CAMPOS_ENDERECO, ...camposCidade].map(([campo, rotulo]) => `
+    <div class="form-group" style="margin-bottom:10px">
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">${rotulo}</label>
+      <input type="text" id="edit-${campo}" value="${escapeHtml(dados[campo]) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit">
+    </div>`).join('');
+}
+
+async function abrirEdicao(tipo, id) {
+  const tabela = { psicologo: 'psicologos', paciente: 'pacientes', empresa: 'empresas' }[tipo];
+  const { data: dados, error } = await db.from(tabela).select('*').eq('id', id).single();
+  if (error) { alert('Erro ao carregar: ' + error.message); return; }
+
+  const el = document.getElementById('detalhe-visualizacao');
+  const fotoCampo = tipo === 'empresa' ? 'logo_url' : 'foto_url';
+  const fotoAtual = dados[fotoCampo];
+
+  let camposEspecificos = '';
+  if (tipo === 'psicologo') {
+    camposEspecificos = `
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">CPF</label><input type="text" id="edit-cpf" value="${escapeHtml(dados.cpf) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Celular</label><input type="text" id="edit-celular" value="${escapeHtml(dados.celular) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      ${linhaEndereco('psicologos', dados, true)}
+      <div class="docs" style="margin-top:10px" id="docs-edicao"><span class="meta">Carregando documentos de verificação...</span></div>`;
+  } else if (tipo === 'paciente') {
+    camposEspecificos = `
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">CPF</label><input type="text" id="edit-cpf" value="${escapeHtml(dados.cpf) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Telefone</label><input type="text" id="edit-telefone" value="${escapeHtml(dados.telefone) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      ${linhaEndereco('pacientes', dados, true)}`;
+  } else {
+    camposEspecificos = `
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">CNPJ</label><input type="text" id="edit-cnpj" value="${escapeHtml(dados.cnpj) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Contato RH</label><input type="text" id="edit-contato_rh" value="${escapeHtml(dados.contato_rh) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Telefone</label><input type="text" id="edit-telefone" value="${escapeHtml(dados.telefone) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+      ${linhaEndereco('empresas', dados, true)}`;
+  }
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h1 style="margin:0">Editar — ${escapeHtml(dados.nome)}</h1>
+        <button class="btn btn-recusar" onclick="document.getElementById('detalhe-visualizacao').innerHTML=''">Fechar</button>
+      </div>
+      <p class="meta" style="margin-bottom:16px">${escapeHtml(dados.email)} (e-mail não é editável aqui)</p>
+
+      <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:16px">
+        <img id="preview-foto" src="${fotoAtual || ''}" style="width:72px;height:72px;border-radius:12px;object-fit:cover;background:var(--surface2);display:${fotoAtual ? 'block' : 'none'}">
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">${tipo === 'empresa' ? 'Logo' : 'Foto de perfil'}</label>
+          <input type="file" id="edit-foto-arquivo" accept="image/*">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:10px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Nome</label><input type="text" id="edit-nome" value="${escapeHtml(dados.nome) || ''}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px"></div>
+
+      ${camposEspecificos}
+
+      <button class="btn btn-aprovar" style="margin-top:10px" onclick="salvarEdicao('${tipo}', '${id}')">Salvar alterações</button>
+    </div>
+  `;
+
+  if (tipo === 'psicologo') {
+    const [crpUrl, diplomaUrl, certidaoUrl] = await Promise.all([
+      urlAssinada(dados.crp_doc_url), urlAssinada(dados.diploma_doc_url), urlAssinada(dados.certidao_doc_url)
+    ]);
+    const link = (url, label) => url
+      ? `<a class="doc-link" href="${url}" target="_blank" rel="noopener">📄 ${label}</a>`
+      : `<span class="doc-link indisponivel">📄 ${label} (não enviado)</span>`;
+    const docsEl = document.getElementById('docs-edicao');
+    if (docsEl) docsEl.innerHTML = link(crpUrl, 'Carteira CRP') + link(diplomaUrl, 'Diploma') + link(certidaoUrl, 'Certidão');
+  }
+}
+
+async function salvarEdicao(tipo, id) {
+  const tabela = { psicologo: 'psicologos', paciente: 'pacientes', empresa: 'empresas' }[tipo];
+  const fotoCampo = tipo === 'empresa' ? 'logo_url' : 'foto_url';
+
+  const payload = { nome: document.getElementById('edit-nome').value.trim() };
+
+  CAMPOS_ENDERECO.forEach(([campo]) => { payload[campo] = document.getElementById('edit-' + campo)?.value.trim() || null; });
+
+  if (tipo === 'psicologo') {
+    payload.cpf = document.getElementById('edit-cpf').value.trim();
+    payload.celular = document.getElementById('edit-celular').value.trim();
+    payload.cidade = document.getElementById('edit-cidade').value.trim();
+    payload.estado = document.getElementById('edit-estado').value.trim();
+  } else if (tipo === 'paciente') {
+    payload.cpf = document.getElementById('edit-cpf').value.trim();
+    payload.telefone = document.getElementById('edit-telefone').value.trim();
+    payload.endereco_cidade = document.getElementById('edit-endereco_cidade').value.trim();
+    payload.endereco_estado = document.getElementById('edit-endereco_estado').value.trim();
+  } else {
+    payload.cnpj = document.getElementById('edit-cnpj').value.trim();
+    payload.contato_rh = document.getElementById('edit-contato_rh').value.trim();
+    payload.telefone = document.getElementById('edit-telefone').value.trim();
+    payload.endereco_cidade = document.getElementById('edit-endereco_cidade').value.trim();
+    payload.endereco_estado = document.getElementById('edit-endereco_estado').value.trim();
+  }
+
+  // Upload de foto, se um arquivo novo foi escolhido
+  const arquivo = document.getElementById('edit-foto-arquivo').files[0];
+  if (arquivo) {
+    const { data: { session } } = await db.auth.getSession();
+    const caminho = `${session.user.id}/${tipo}-${id}-${Date.now()}-${arquivo.name}`;
+    const { error: erroUpload } = await db.storage.from('fotos-perfil').upload(caminho, arquivo);
+    if (erroUpload) { alert('Erro ao enviar foto: ' + erroUpload.message); return; }
+    const { data: urlPublica } = db.storage.from('fotos-perfil').getPublicUrl(caminho);
+    payload[fotoCampo] = urlPublica.publicUrl;
+  }
+
+  const { error } = await db.from(tabela).update(payload).eq('id', id);
+  if (error) { alert('Erro ao salvar: ' + error.message); return; }
+
+  alert('Salvo com sucesso!');
+  if (tipo === 'psicologo') await carregarPsicologos();
+  if (tipo === 'paciente') await carregarPacientes();
+  if (tipo === 'empresa') await carregarEmpresas();
+
+  document.getElementById('detalhe-visualizacao').innerHTML = '';
+  mostrarTab(tipo === 'psicologo' ? 'psicologos' : tipo === 'paciente' ? 'pacientes' : 'empresas', document.querySelector('.tab-btn.active'));
 }
 
 /* ---------------- APROVAÇÕES ---------------- */
