@@ -237,6 +237,12 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
         <button class="save-btn" style="width:auto" onclick="salvarAnamnese()">Salvar anamnese</button>
       </div>
     </div>
+
+    <div class="card">
+      <h3>🛠️ Suporte técnico</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Por padrão, a equipe da Mind <strong>não tem acesso</strong> ao prontuário deste paciente. Se você reportou um bug e a equipe precisa investigar os dados clínicos pra resolver, autorize aqui — por prazo limitado, revogável a qualquer momento.</p>
+      <div id="autorizacao-atual"></div>
+    </div>
   </div>
 
   <!-- FINANCEIRO -->
@@ -460,7 +466,49 @@ async function salvarAnamnese() {
   carregarAnamnese();
 }
 
-/* ---------------- HIPÓTESE DIAGNÓSTICA ---------------- */
+/* ---------------- SUPORTE TÉCNICO (autorização de acesso clínico) ---------------- */
+
+async function carregarAutorizacaoSuporte() {
+  const el = document.getElementById('autorizacao-atual');
+  const { data } = await db.from('autorizacoes_suporte').select('*').eq('paciente_id', pacienteId).eq('status', 'ativa').order('criado_em', { ascending: false }).limit(1).maybeSingle();
+
+  const ativa = data && new Date(data.expira_em) > new Date();
+
+  if (ativa) {
+    el.innerHTML = `
+      <div style="background:rgba(180,83,9,0.08);border:1px solid rgba(180,83,9,0.2);border-radius:10px;padding:12px 16px">
+        <strong>🔓 Suporte autorizado</strong>
+        <p style="font-size:13px;margin-top:4px">Motivo: ${escapeHtml(data.motivo)}</p>
+        <p style="font-size:12px;color:var(--muted);margin-top:4px">Expira em ${new Date(data.expira_em).toLocaleString('pt-BR')}</p>
+        <button class="btn-secundario" style="margin-top:10px" onclick="revogarAutorizacaoSuporte('${data.id}')">Revogar agora</button>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <textarea id="motivo-suporte" rows="2" placeholder="Descreva o problema que precisa de investigação (ex: gráfico de evolução não está mostrando os dados certos)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:inherit;font-size:13px;margin-bottom:10px"></textarea>
+      <button class="save-btn" style="width:auto" onclick="autorizarSuporte()">Autorizar por 7 dias</button>`;
+  }
+}
+
+async function autorizarSuporte() {
+  const motivo = document.getElementById('motivo-suporte').value.trim();
+  if (!motivo) { alert('Descreva o motivo — isso fica registrado no pedido.'); return; }
+
+  const { error } = await db.from('autorizacoes_suporte').insert({
+    psicologo_id: paciente.psicologo_id,
+    paciente_id: pacienteId,
+    motivo,
+    status: 'ativa'
+  });
+
+  if (error) { alert('Erro ao autorizar: ' + error.message); return; }
+  carregarAutorizacaoSuporte();
+}
+
+async function revogarAutorizacaoSuporte(id) {
+  const { error } = await db.from('autorizacoes_suporte').update({ status: 'revogada', revogada_em: new Date().toISOString() }).eq('id', id);
+  if (error) { alert('Erro ao revogar: ' + error.message); return; }
+  carregarAutorizacaoSuporte();
+}
 
 function toggleFormHipotese() {
   document.getElementById('form-hipotese').classList.toggle('open');
@@ -621,7 +669,7 @@ function abrirTab(nome, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + nome).classList.add('active');
   el.classList.add('active');
-  if (nome === 'anamnese') { carregarAnamnese(); carregarHipoteses(); }
+  if (nome === 'anamnese') { carregarAnamnese(); carregarHipoteses(); carregarAutorizacaoSuporte(); }
   if (nome === 'financeiro') carregarPagamentos();
   if (nome === 'timeline') carregarLinhaDoTempo();
 }

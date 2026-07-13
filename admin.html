@@ -17,9 +17,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
 header .logo { font-weight: 800; font-size: 18px; color: var(--navy); }
 header .quem { font-size: 13px; color: var(--muted); }
-.wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+.tabs { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 32px; display: flex; gap: 4px; overflow-x: auto; }
+.tab-btn { background: none; border: none; padding: 14px 16px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.tab-btn.active { color: var(--navy); border-bottom-color: var(--navy); }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
 h1 { font-size: 22px; margin-bottom: 6px; }
-.sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+.sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; margin-bottom: 16px; }
 .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
 .nome { font-size: 16px; font-weight: 700; }
@@ -37,13 +42,37 @@ h1 { font-size: 22px; margin-bottom: 6px; }
 .negado { text-align: center; padding: 100px 20px; color: var(--muted); }
 .badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; }
 .badge.em_analise { background: rgba(180,83,9,0.12); color: var(--warning); }
+.badge.aprovado { background: rgba(91,140,110,0.12); color: var(--sage); }
+.badge.rejeitado { background: rgba(185,28,28,0.12); color: var(--error); }
+.badge.ativo { background: rgba(91,140,110,0.12); color: var(--sage); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+.stat-card .valor { font-size: 26px; font-weight: 800; color: var(--navy); }
+.stat-card .rotulo { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.busca { width: 100%; max-width: 320px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 14px; font-size: 13px; font-family: inherit; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">Mind — Admin</div>
-  <div class="quem" id="quem-esta"></div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="quem" id="quem-esta"></div>
+    <button onclick="sair()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text)">Sair</button>
+  </div>
 </header>
+
+<div class="tabs" id="tabs" style="display:none">
+  <button class="tab-btn active" onclick="mostrarTab('visao', this)">📊 Visão Geral</button>
+  <button class="tab-btn" onclick="mostrarTab('psicologos', this)">🧑‍⚕️ Psicólogos</button>
+  <button class="tab-btn" onclick="mostrarTab('pacientes', this)">🧍 Pacientes</button>
+  <button class="tab-btn" onclick="mostrarTab('empresas', this)">🏢 Empresas</button>
+  <button class="tab-btn" onclick="mostrarTab('aprovacoes', this)">✅ Aprovações</button>
+  <button class="tab-btn" onclick="mostrarTab('exclusoes', this)">🗑️ Exclusões (LGPD)</button>
+</div>
 
 <div class="wrap" id="conteudo">
   <div class="loading">Verificando acesso...</div>
@@ -59,6 +88,12 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+let TODOS_PSICOLOGOS = [];
+let TODOS_PACIENTES = [];
+let TODAS_EMPRESAS = [];
+
+async function sair() { await db.auth.signOut(); window.location.href = 'login.html'; }
+
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
@@ -71,61 +106,218 @@ async function init() {
     return;
   }
   document.getElementById('quem-esta').textContent = (souAdmin.nome || session.user.email) + ' · admin';
+  document.getElementById('tabs').style.display = 'flex';
 
-  // Checagem de acesso no front-end é só conveniência de UX — a
-  // segurança de verdade está nas policies de RLS (só quem está na
-  // tabela `admins` consegue de fato ler/editar as linhas de
-  // `psicologos`). Mesmo que alguém burle esta tela, o Supabase nega
-  // a consulta.
-  const { data: pendentes, error } = await db.from('psicologos')
-    .select('id, nome, email, crp, uf_crp, celular, formacao, crp_doc_url, diploma_doc_url, certidao_doc_url, status_cadastro, criado_em')
-    .eq('status_cadastro', 'em_analise');
+  await Promise.all([carregarPsicologos(), carregarPacientes(), carregarEmpresas(), carregarAprovacoes(), carregarExclusoes()]);
 
-  if (error) {
-    document.getElementById('conteudo').innerHTML = `<div class="negado">🔒 Acesso negado. Esta conta não tem permissão de administrador.</div>`;
-    return;
-  }
-
-  const { data: solicitacoes } = await db.from('solicitacoes_exclusao').select('*').eq('status', 'pendente').order('criado_em');
-
-  renderizar(pendentes || [], solicitacoes || []);
+  mostrarVisaoGeral();
 }
 
-async function urlAssinada(path) {
-  if (!path) return null;
-  const { data, error } = await db.storage.from('psicologos-documentos').createSignedUrl(path, 300); // 5 minutos
-  if (error) return null;
-  return data.signedUrl;
+function mostrarTab(nome, el) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const funcoes = { visao: mostrarVisaoGeral, psicologos: renderPsicologos, pacientes: renderPacientes, empresas: renderEmpresas, aprovacoes: renderAprovacoes, exclusoes: renderExclusoes };
+  funcoes[nome]();
 }
 
-function renderizar(lista, solicitacoes) {
+/* ---------------- CARREGAMENTO ---------------- */
+
+async function carregarPsicologos() {
+  const { data } = await db.from('psicologos').select('id, nome, email, crp, uf_crp, status_cadastro, criado_em, celular, formacao, crp_doc_url, diploma_doc_url, certidao_doc_url, motivo_recusa').order('criado_em', { ascending: false });
+  TODOS_PSICOLOGOS = data || [];
+}
+
+let AUTORIZACOES_ATIVAS = [];
+
+async function carregarPacientes() {
+  const { data } = await db.from('pacientes').select('id, nome, email, status, data_inicio, total_sessoes, departamento, psicologo_id, empresa_id, psicologos(nome), empresas(nome)').order('data_inicio', { ascending: false });
+  TODOS_PACIENTES = data || [];
+
+  const { data: autorizacoes } = await db.from('autorizacoes_suporte').select('*').eq('status', 'ativa');
+  AUTORIZACOES_ATIVAS = (autorizacoes || []).filter(a => new Date(a.expira_em) > new Date());
+}
+
+async function carregarEmpresas() {
+  const { data } = await db.from('empresas').select('id, nome, email, cnpj, plano, criado_em').order('criado_em', { ascending: false });
+  TODAS_EMPRESAS = data || [];
+}
+
+async function carregarAprovacoes() {} // usa TODOS_PSICOLOGOS já carregado
+async function carregarExclusoes() {}   // busca na hora, é lista pequena e muda rápido
+
+/* ---------------- VISÃO GERAL ---------------- */
+
+async function mostrarVisaoGeral() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
   const el = document.getElementById('conteudo');
 
-  const blocoSolicitacoes = `
-    <h1 style="margin-top:0">Solicitações de exclusão (LGPD)</h1>
-    <p class="sub">${solicitacoes.length} solicitação(ões) pendente(s).</p>
-    ${!solicitacoes.length ? '<div class="empty" style="padding:24px">Nenhuma solicitação pendente.</div>' : solicitacoes.map(s => `
-      <div class="card" id="solic-${s.id}">
-        <div class="card-header">
-          <div>
-            <div class="nome">${escapeHtml(s.email)}</div>
-            <div class="meta">Conta: ${escapeHtml(s.tipo_conta) || '—'} · pedido em ${new Date(s.criado_em).toLocaleDateString('pt-BR')}</div>
-            ${s.motivo ? `<div class="meta">Motivo: ${escapeHtml(s.motivo)}</div>` : ''}
-          </div>
-        </div>
-        <div class="actions">
-          <input type="text" class="motivo-input" id="resp-${s.id}" placeholder="Ex: dados não-clínicos removidos em [data]; prontuário retido até [data+5 anos, Res. CFP 6/2019] e então anonimizado">
-          <button class="btn btn-aprovar" onclick="processarSolicitacao('${s.id}', 'processada')">Marcar como processada</button>
-          <button class="btn btn-recusar" onclick="processarSolicitacao('${s.id}', 'recusada')">Recusar</button>
-        </div>
-      </div>
-    `).join('')}
-  `;
+  const { data: metricas } = await db.rpc('admin_metricas_gerais');
+  const m = metricas?.[0] || { total_sessoes_realizadas: 0, faturamento_psicologos: 0 };
 
-  const blocoPsicologos = !lista.length
+  const aprovados = TODOS_PSICOLOGOS.filter(p => p.status_cadastro === 'aprovado').length;
+  const pendentes = TODOS_PSICOLOGOS.filter(p => p.status_cadastro === 'em_analise').length;
+  const pacientesAtivos = TODOS_PACIENTES.filter(p => p.status === 'ativo').length;
+
+  el.innerHTML = `
+    <h1>Visão Geral</h1>
+    <p class="sub">Números da plataforma inteira.</p>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="valor">${TODOS_PSICOLOGOS.length}</div><div class="rotulo">Psicólogos (${aprovados} aprovados, ${pendentes} pendentes)</div></div>
+      <div class="stat-card"><div class="valor">${TODOS_PACIENTES.length}</div><div class="rotulo">Pacientes (${pacientesAtivos} ativos)</div></div>
+      <div class="stat-card"><div class="valor">${TODAS_EMPRESAS.length}</div><div class="rotulo">Empresas parceiras</div></div>
+      <div class="stat-card"><div class="valor">${m.total_sessoes_realizadas}</div><div class="rotulo">Sessões realizadas</div></div>
+      <div class="stat-card"><div class="valor">R$ ${Number(m.faturamento_psicologos).toLocaleString('pt-BR')}</div><div class="rotulo">Repassado a psicólogos</div></div>
+    </div>
+    <p class="meta">🔒 Este painel não lê conteúdo clínico por padrão — nem em consultas agregadas. Os números acima vêm de uma função que soma no banco e nunca devolve uma linha individual de sessão. Prontuário completo só é acessível paciente a paciente, e apenas quando o psicólogo responsável autoriza explicitamente (aba Pacientes).</p>
+  `;
+}
+
+/* ---------------- PSICÓLOGOS ---------------- */
+
+function renderPsicologos() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+  const el = document.getElementById('conteudo');
+  el.innerHTML = `
+    <h1>Psicólogos</h1>
+    <p class="sub">${TODOS_PSICOLOGOS.length} cadastrado(s).</p>
+    <input type="text" class="busca" id="busca-psi" placeholder="Buscar por nome ou e-mail..." oninput="filtrarPsicologos()">
+    <table><thead><tr><th>Nome</th><th>E-mail</th><th>CRP</th><th>Status</th><th>Cadastro</th></tr></thead><tbody id="tbody-psi"></tbody></table>
+  `;
+  desenharPsicologos(TODOS_PSICOLOGOS);
+}
+
+function desenharPsicologos(lista) {
+  document.getElementById('tbody-psi').innerHTML = lista.map(p => `
+    <tr>
+      <td><strong>${escapeHtml(p.nome)}</strong></td>
+      <td>${escapeHtml(p.email)}</td>
+      <td>${escapeHtml(p.crp)}${p.uf_crp ? '/' + escapeHtml(p.uf_crp) : ''}</td>
+      <td><span class="badge ${p.status_cadastro}">${escapeHtml(p.status_cadastro)}</span></td>
+      <td>${p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : '—'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="empty">Nenhum psicólogo encontrado.</td></tr>';
+}
+
+function filtrarPsicologos() {
+  const q = document.getElementById('busca-psi').value.toLowerCase();
+  desenharPsicologos(TODOS_PSICOLOGOS.filter(p => (p.nome || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)));
+}
+
+/* ---------------- PACIENTES ---------------- */
+
+function renderPacientes() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+  const el = document.getElementById('conteudo');
+  el.innerHTML = `
+    <h1>Pacientes</h1>
+    <p class="sub">${TODOS_PACIENTES.length} cadastrado(s). Prontuário clínico só é visível quando o psicólogo autoriza explicitamente (paciente a paciente).</p>
+    <input type="text" class="busca" id="busca-pac" placeholder="Buscar por nome ou e-mail..." oninput="filtrarPacientes()">
+    <table><thead><tr><th>Nome</th><th>E-mail</th><th>Psicólogo</th><th>Empresa</th><th>Status</th><th>Sessões</th><th>Prontuário</th></tr></thead><tbody id="tbody-pac"></tbody></table>
+    <div id="prontuario-visualizacao" style="margin-top:20px"></div>
+  `;
+  desenharPacientes(TODOS_PACIENTES);
+}
+
+function desenharPacientes(lista) {
+  document.getElementById('tbody-pac').innerHTML = lista.map(p => {
+    const autorizado = AUTORIZACOES_ATIVAS.some(a => a.paciente_id === p.id);
+    return `
+    <tr>
+      <td><strong>${escapeHtml(p.nome)}</strong></td>
+      <td>${escapeHtml(p.email)}</td>
+      <td>${escapeHtml(p.psicologos?.nome) || '—'}</td>
+      <td>${escapeHtml(p.empresas?.nome) || '—'}</td>
+      <td><span class="badge ${p.status}">${escapeHtml(p.status)}</span></td>
+      <td>${p.total_sessoes ?? 0}</td>
+      <td>${autorizado
+        ? `<button class="btn btn-aprovar" style="padding:5px 12px;font-size:12px" onclick="verProntuario('${p.id}')">🔓 Ver prontuário</button>`
+        : `<span class="meta">🔒 Não autorizado</span>`}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty">Nenhum paciente encontrado.</td></tr>';
+}
+
+async function verProntuario(pacienteId) {
+  const paciente = TODOS_PACIENTES.find(p => p.id === pacienteId);
+  const autorizacao = AUTORIZACOES_ATIVAS.find(a => a.paciente_id === pacienteId);
+  const el = document.getElementById('prontuario-visualizacao');
+  el.innerHTML = `<div class="loading">Carregando prontuário...</div>`;
+
+  const [{ data: anamnese }, { data: sessoes }, { data: hipoteses }, { data: intercorrencias }] = await Promise.all([
+    db.from('anamneses').select('*').eq('paciente_id', pacienteId).order('criado_em', { ascending: false }).limit(1),
+    db.from('sessoes').select('*').eq('paciente_id', pacienteId).order('data_hora', { ascending: false }),
+    db.from('hipoteses_diagnosticas').select('*').eq('paciente_id', pacienteId).order('criado_em', { ascending: false }),
+    db.from('intercorrencias').select('*').eq('paciente_id', pacienteId).order('data', { ascending: false })
+  ]);
+
+  const a = anamnese?.[0];
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h1 style="margin:0">Prontuário — ${escapeHtml(paciente?.nome)}</h1>
+          <p class="meta">Acesso autorizado por ${escapeHtml(paciente?.psicologos?.nome) || 'psicólogo responsável'} · motivo: "${escapeHtml(autorizacao?.motivo)}" · expira em ${autorizacao ? new Date(autorizacao.expira_em).toLocaleString('pt-BR') : '—'}</p>
+        </div>
+        <button class="btn btn-recusar" onclick="document.getElementById('prontuario-visualizacao').innerHTML=''">Fechar</button>
+      </div>
+
+      <h3 style="margin-top:16px">Anamnese</h3>
+      ${a ? `<p style="font-size:13px;margin-top:6px"><strong>Queixa:</strong> ${escapeHtml(a.queixa_principal) || '—'}</p>
+             <p style="font-size:13px;margin-top:6px"><strong>História clínica:</strong> ${escapeHtml(a.historia_clinica) || '—'}</p>` : '<p class="meta">Sem anamnese registrada.</p>'}
+
+      <h3 style="margin-top:20px">Hipóteses diagnósticas</h3>
+      ${(hipoteses || []).length ? hipoteses.map(h => `<p style="font-size:13px;margin-top:4px">${h.ativa ? '🟢' : '⚪'} <strong>${escapeHtml(h.cid) || 'sem CID'}</strong> — ${escapeHtml(h.descricao) || 'sem descrição'} <span class="meta">(${new Date(h.criado_em).toLocaleDateString('pt-BR')})</span></p>`).join('') : '<p class="meta">Nenhuma registrada.</p>'}
+
+      <h3 style="margin-top:20px">Sessões (${(sessoes || []).length})</h3>
+      ${(sessoes || []).length ? sessoes.map(s => `
+        <div style="border-top:1px solid var(--border);padding:10px 0">
+          <div class="meta">${new Date(s.data_hora).toLocaleDateString('pt-BR')} · <span class="badge ${s.status === 'realizada' ? 'aprovado' : 'em_analise'}">${escapeHtml(s.status)}</span></div>
+          ${s.resumo_sessao ? `<p style="font-size:13px;margin-top:4px">${escapeHtml(s.resumo_sessao)}</p>` : ''}
+        </div>`).join('') : '<p class="meta">Nenhuma sessão registrada.</p>'}
+
+      <h3 style="margin-top:20px">Intercorrências</h3>
+      ${(intercorrencias || []).length ? intercorrencias.map(i => `<p style="font-size:13px;margin-top:4px">${new Date(i.data).toLocaleDateString('pt-BR')} — ${escapeHtml(i.descricao)} <span class="meta">(${escapeHtml(i.gravidade)})</span></p>`).join('') : '<p class="meta">Nenhuma registrada.</p>'}
+    </div>
+  `;
+}
+
+function filtrarPacientes() {
+  const q = document.getElementById('busca-pac').value.toLowerCase();
+  desenharPacientes(TODOS_PACIENTES.filter(p => (p.nome || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)));
+}
+
+/* ---------------- EMPRESAS ---------------- */
+
+function renderEmpresas() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+  const el = document.getElementById('conteudo');
+  el.innerHTML = `
+    <h1>Empresas</h1>
+    <p class="sub">${TODAS_EMPRESAS.length} parceira(s).</p>
+    <table><thead><tr><th>Nome</th><th>E-mail</th><th>CNPJ</th><th>Plano</th><th>Colaboradores</th></tr></thead><tbody id="tbody-emp"></tbody></table>
+  `;
+  document.getElementById('tbody-emp').innerHTML = TODAS_EMPRESAS.map(e => `
+    <tr>
+      <td><strong>${escapeHtml(e.nome)}</strong></td>
+      <td>${escapeHtml(e.email)}</td>
+      <td>${escapeHtml(e.cnpj) || '—'}</td>
+      <td>${escapeHtml(e.plano) || '—'}</td>
+      <td>${TODOS_PACIENTES.filter(p => p.empresa_id === e.id).length}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="empty">Nenhuma empresa encontrada.</td></tr>';
+}
+
+/* ---------------- APROVAÇÕES ---------------- */
+
+function renderAprovacoes() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+  const pendentes = TODOS_PSICOLOGOS.filter(p => p.status_cadastro === 'em_analise');
+  const el = document.getElementById('conteudo');
+
+  el.innerHTML = !pendentes.length
     ? `<h1>Aprovação de psicólogos</h1><p class="sub">Cadastros aguardando análise.</p><div class="empty">✅ Nenhum cadastro pendente no momento.</div>`
-    : `<h1>Aprovação de psicólogos</h1><p class="sub">${lista.length} cadastro(s) aguardando análise.</p>` +
-      lista.map(p => `
+    : `<h1>Aprovação de psicólogos</h1><p class="sub">${pendentes.length} cadastro(s) aguardando análise.</p>` +
+      pendentes.map(p => `
         <div class="card" id="card-${p.id}">
           <div class="card-header">
             <div>
@@ -144,16 +336,14 @@ function renderizar(lista, solicitacoes) {
         </div>
       `).join('');
 
-  el.innerHTML = blocoSolicitacoes + '<hr style="border:none;border-top:1px solid var(--border);margin:32px 0">' + blocoPsicologos;
-
-  lista.forEach(carregarDocs);
+  pendentes.forEach(carregarDocs);
 }
 
-async function processarSolicitacao(id, status) {
-  const resposta = document.getElementById('resp-' + id).value.trim();
-  const { error } = await db.from('solicitacoes_exclusao').update({ status, resposta_admin: resposta || null, processado_em: new Date().toISOString() }).eq('id', id);
-  if (error) { alert('Erro: ' + error.message); return; }
-  document.getElementById('solic-' + id).remove();
+async function urlAssinada(path) {
+  if (!path) return null;
+  const { data, error } = await db.storage.from('psicologos-documentos').createSignedUrl(path, 300);
+  if (error) return null;
+  return data.signedUrl;
 }
 
 async function carregarDocs(p) {
@@ -161,25 +351,63 @@ async function carregarDocs(p) {
   const [crpUrl, diplomaUrl, certidaoUrl] = await Promise.all([
     urlAssinada(p.crp_doc_url), urlAssinada(p.diploma_doc_url), urlAssinada(p.certidao_doc_url)
   ]);
-
   const link = (url, label) => url
     ? `<a class="doc-link" href="${url}" target="_blank" rel="noopener">📄 ${label}</a>`
     : `<span class="doc-link indisponivel">📄 ${label} (não enviado)</span>`;
-
-  el.innerHTML = link(crpUrl, 'Carteira CRP') + link(diplomaUrl, 'Diploma') + link(certidaoUrl, 'Certidão');
+  if (el) el.innerHTML = link(crpUrl, 'Carteira CRP') + link(diplomaUrl, 'Diploma') + link(certidaoUrl, 'Certidão');
 }
 
 async function aprovar(id) {
   const { error } = await db.from('psicologos').update({ status_cadastro: 'aprovado', motivo_recusa: null }).eq('id', id);
   if (error) { alert('Erro ao aprovar: ' + error.message); return; }
-  document.getElementById('card-' + id).remove();
+  await carregarPsicologos();
+  renderAprovacoes();
 }
 
 async function recusar(id) {
   const motivo = document.getElementById('motivo-' + id).value.trim();
   const { error } = await db.from('psicologos').update({ status_cadastro: 'rejeitado', motivo_recusa: motivo || null }).eq('id', id);
   if (error) { alert('Erro ao recusar: ' + error.message); return; }
-  document.getElementById('card-' + id).remove();
+  await carregarPsicologos();
+  renderAprovacoes();
+}
+
+/* ---------------- EXCLUSÕES LGPD ---------------- */
+
+async function renderExclusoes() {
+  document.querySelectorAll('.tab-pane').forEach(p => p.remove());
+  const el = document.getElementById('conteudo');
+  el.innerHTML = `<h1>Solicitações de exclusão (LGPD)</h1><p class="sub">Carregando...</p>`;
+
+  const { data: solicitacoes } = await db.from('solicitacoes_exclusao').select('*').eq('status', 'pendente').order('criado_em');
+
+  el.innerHTML = `
+    <h1>Solicitações de exclusão (LGPD)</h1>
+    <p class="sub">${(solicitacoes || []).length} solicitação(ões) pendente(s).</p>
+    ${!solicitacoes?.length ? '<div class="empty">Nenhuma solicitação pendente.</div>' : solicitacoes.map(s => `
+      <div class="card" id="solic-${s.id}">
+        <div class="card-header">
+          <div>
+            <div class="nome">${escapeHtml(s.email)}</div>
+            <div class="meta">Conta: ${escapeHtml(s.tipo_conta) || '—'} · pedido em ${new Date(s.criado_em).toLocaleDateString('pt-BR')}</div>
+            ${s.motivo ? `<div class="meta">Motivo: ${escapeHtml(s.motivo)}</div>` : ''}
+          </div>
+        </div>
+        <div class="actions">
+          <input type="text" class="motivo-input" id="resp-${s.id}" placeholder="Ex: dados não-clínicos removidos em [data]; prontuário retido até [data+5 anos, Res. CFP 6/2019] e então anonimizado">
+          <button class="btn btn-aprovar" onclick="processarSolicitacao('${s.id}', 'processada')">Marcar como processada</button>
+          <button class="btn btn-recusar" onclick="processarSolicitacao('${s.id}', 'recusada')">Recusar</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function processarSolicitacao(id, status) {
+  const resposta = document.getElementById('resp-' + id).value.trim();
+  const { error } = await db.from('solicitacoes_exclusao').update({ status, resposta_admin: resposta || null, processado_em: new Date().toISOString() }).eq('id', id);
+  if (error) { alert('Erro: ' + error.message); return; }
+  renderExclusoes();
 }
 
 init();
