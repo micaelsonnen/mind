@@ -400,7 +400,7 @@ function rng(seed, arr) { return arr[seed % arr.length]; }
 async function carregar() {
   const { data, error } = await db
     .from('psicologos_publico')
-    .select('id, nome, crp, abordagem, foto_url, especialidades, disponibilidade, bio')
+    .select('id, nome, crp, abordagem, foto_url, especialidades, disponibilidade, bio, slug')
     .order('nome');
 
   if (error || !data || data.length === 0) {
@@ -472,7 +472,7 @@ function renderizar(lista) {
     const media = notas.length ? (notas.reduce((s,n)=>s+n,0) / notas.length) : 0;
     const ratingHtml = notas.length ? `<div style="font-size:0.78rem;color:#b45309;margin-top:2px">★ ${media.toFixed(1)} (${notas.length})</div>` : '';
     return `
-    <a href="psicologo.html?id=${p.id}" class="card-psi">
+    <a href="psicologo.html?${p.slug ? 'slug=' + p.slug : 'id=' + p.id}" class="card-psi">
       <div class="card-banner">
         <div class="card-avatar">${p.foto_url ? `<img src="${escapeHtml(p.foto_url)}" alt="${escapeHtml(p.nome)}">` : iniciais}</div>
         <span class="card-badge-online">Disponível</span>

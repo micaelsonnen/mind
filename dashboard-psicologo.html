@@ -99,6 +99,7 @@ tbody tr:last-child td { border-bottom: none; }
       <a href="#" class="active" onclick="mostrarAba('visao', this)"><span class="nav-icon">🏠</span>Visão Geral</a>
       <a href="#" onclick="mostrarAba('pacientes', this)"><span class="nav-icon">👥</span>Pacientes</a>
       <a href="#" onclick="mostrarAba('agenda', this)"><span class="nav-icon">📅</span>Agenda</a>
+      <a href="#" onclick="mostrarAba('horarios', this)"><span class="nav-icon">⏰</span>Horários</a>
       <a href="#" onclick="mostrarAba('financeiro', this)"><span class="nav-icon">💰</span>Financeiro</a>
       <a href="meus-dados.html"><span class="nav-icon">🔒</span>Meus Dados</a>
       <a href="plano.html"><span class="nav-icon">📇</span>Plano</a>
@@ -167,6 +168,58 @@ tbody tr:last-child td { border-bottom: none; }
           <a href="novo-paciente.html" class="novo-paciente-btn">+ Novo paciente</a>
         </div>
         <div id="tabela-pacientes"><div class="loading">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- ABA: HORÁRIOS -->
+    <div id="aba-horarios" class="tab-section">
+      <div class="card" style="margin-bottom:20px">
+        <h3>👁️ Visibilidade do perfil</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Quando oculto, seu perfil não aparece na vitrine pública nem pode ser encontrado por pacientes — mas continua acessível pra quem já é seu paciente.</p>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="toggle-perfil-publico" onchange="salvarVisibilidadePerfil()" style="width:18px;height:18px">
+          <span id="label-perfil-publico">Perfil visível na vitrine pública</span>
+        </label>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <h3>🔁 Horário recorrente</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Defina os blocos de horário em que você atende, por dia da semana. Os horários de agendamento oferecidos aos pacientes são gerados automaticamente a partir daqui.</p>
+        <div id="lista-disponibilidade" style="margin-bottom:14px"><div class="loading">Carregando...</div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Dia da semana</label>
+            <select id="disp-dia">
+              <option value="1">Segunda</option><option value="2">Terça</option><option value="3">Quarta</option>
+              <option value="4">Quinta</option><option value="5">Sexta</option><option value="6">Sábado</option><option value="0">Domingo</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Início</label>
+            <input type="time" id="disp-inicio" value="08:00">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Fim</label>
+            <input type="time" id="disp-fim" value="12:00">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Duração da sessão (min)</label>
+            <input type="number" id="disp-duracao" value="50" style="width:80px">
+          </div>
+          <button class="btn-secundario" onclick="adicionarDisponibilidade()">+ Adicionar bloco</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🌴 Ausências</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Bloqueie um período (férias, licença, viagem) — nenhum horário fica disponível pra agendamento nesses dias.</p>
+        <div id="lista-ausencias" style="margin-bottom:14px"><div class="loading">Carregando...</div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">De</label><input type="date" id="aus-inicio"></div>
+          <div><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Até</label><input type="date" id="aus-fim"></div>
+          <div style="flex:1;min-width:160px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Motivo (opcional)</label><input type="text" id="aus-motivo" style="width:100%" placeholder="Férias"></div>
+          <button class="btn-secundario" onclick="adicionarAusencia()">+ Bloquear período</button>
+        </div>
       </div>
     </div>
 
@@ -476,14 +529,92 @@ function mostrarAba(nome, el) {
   document.getElementById('aba-' + nome).classList.add('active');
   el.classList.add('active');
 
-  const titulos = { visao: ['Visão Geral', 'Resumo da sua prática'], pacientes: ['Pacientes', 'Lista de pacientes em acompanhamento'], agenda: ['Agenda', 'Próximas sessões'], financeiro: ['Financeiro', 'Repasses e pagamentos'] };
+  const titulos = { visao: ['Visão Geral', 'Resumo da sua prática'], pacientes: ['Pacientes', 'Lista de pacientes em acompanhamento'], agenda: ['Agenda', 'Próximas sessões'], horarios: ['Horários', 'Disponibilidade e visibilidade do perfil'], financeiro: ['Financeiro', 'Repasses e pagamentos'] };
   const [t, s] = titulos[nome] || ['', ''];
   document.getElementById('titulo-pagina').textContent = t;
   document.getElementById('subtitulo-pagina').textContent = s;
 
   if (nome === 'pacientes') carregarPacientes();
   if (nome === 'agenda') { carregarSolicitacoes(); carregarAgenda(); }
+  if (nome === 'horarios') carregarHorarios();
   if (nome === 'financeiro') carregarFinanceiro();
+}
+
+/* ---------------- HORÁRIOS (disponibilidade, ausências, visibilidade) ---------------- */
+
+const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+async function carregarHorarios() {
+  const { data: psi } = await db.from('psicologos').select('perfil_publico').eq('id', psicologoId).maybeSingle();
+  document.getElementById('toggle-perfil-publico').checked = psi?.perfil_publico !== false;
+  atualizarLabelVisibilidade();
+
+  const [{ data: blocos }, { data: ausencias }] = await Promise.all([
+    db.from('disponibilidade_semanal').select('*').eq('psicologo_id', psicologoId).order('dia_semana'),
+    db.from('ausencias').select('*').eq('psicologo_id', psicologoId).order('data_inicio', { ascending: false })
+  ]);
+
+  const elDisp = document.getElementById('lista-disponibilidade');
+  elDisp.innerHTML = blocos?.length ? blocos.map(b => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span><strong>${DIAS_SEMANA[b.dia_semana]}</strong> · ${b.hora_inicio.slice(0,5)} às ${b.hora_fim.slice(0,5)} · sessões de ${b.duracao_sessao}min</span>
+      <button class="link" style="color:var(--error);background:none;border:none;cursor:pointer;font-weight:600" onclick="removerDisponibilidade('${b.id}')">Remover</button>
+    </div>`).join('') : '<p class="meta">Nenhum horário cadastrado ainda — pacientes não vão conseguir agendar até você adicionar pelo menos um bloco.</p>';
+
+  const elAus = document.getElementById('lista-ausencias');
+  elAus.innerHTML = ausencias?.length ? ausencias.map(a => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${new Date(a.data_inicio + 'T00:00').toLocaleDateString('pt-BR')} até ${new Date(a.data_fim + 'T00:00').toLocaleDateString('pt-BR')}${a.motivo ? ' — ' + a.motivo : ''}</span>
+      <button class="link" style="color:var(--error);background:none;border:none;cursor:pointer;font-weight:600" onclick="removerAusencia('${a.id}')">Remover</button>
+    </div>`).join('') : '<p class="meta">Nenhuma ausência registrada.</p>';
+}
+
+function atualizarLabelVisibilidade() {
+  const marcado = document.getElementById('toggle-perfil-publico').checked;
+  document.getElementById('label-perfil-publico').textContent = marcado ? 'Perfil visível na vitrine pública' : 'Perfil oculto (só pacientes já vinculados te encontram)';
+}
+
+async function salvarVisibilidadePerfil() {
+  atualizarLabelVisibilidade();
+  const marcado = document.getElementById('toggle-perfil-publico').checked;
+  const { error } = await db.from('psicologos').update({ perfil_publico: marcado }).eq('id', psicologoId);
+  if (error) alert('Erro ao salvar: ' + error.message);
+}
+
+async function adicionarDisponibilidade() {
+  const dia_semana = parseInt(document.getElementById('disp-dia').value);
+  const hora_inicio = document.getElementById('disp-inicio').value;
+  const hora_fim = document.getElementById('disp-fim').value;
+  const duracao_sessao = parseInt(document.getElementById('disp-duracao').value) || 50;
+
+  if (!hora_inicio || !hora_fim || hora_inicio >= hora_fim) { alert('Confira o horário de início e fim.'); return; }
+
+  const { error } = await db.from('disponibilidade_semanal').insert({ psicologo_id: psicologoId, dia_semana, hora_inicio, hora_fim, duracao_sessao });
+  if (error) { alert('Erro ao adicionar: ' + error.message); return; }
+  carregarHorarios();
+}
+
+async function removerDisponibilidade(id) {
+  await db.from('disponibilidade_semanal').delete().eq('id', id);
+  carregarHorarios();
+}
+
+async function adicionarAusencia() {
+  const data_inicio = document.getElementById('aus-inicio').value;
+  const data_fim = document.getElementById('aus-fim').value;
+  const motivo = document.getElementById('aus-motivo').value.trim();
+
+  if (!data_inicio || !data_fim || data_inicio > data_fim) { alert('Confira as datas de início e fim.'); return; }
+
+  const { error } = await db.from('ausencias').insert({ psicologo_id: psicologoId, data_inicio, data_fim, motivo: motivo || null });
+  if (error) { alert('Erro ao registrar: ' + error.message); return; }
+  document.getElementById('aus-motivo').value = '';
+  carregarHorarios();
+}
+
+async function removerAusencia(id) {
+  await db.from('ausencias').delete().eq('id', id);
+  carregarHorarios();
 }
 
 async function sair() {

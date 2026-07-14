@@ -375,6 +375,7 @@ let horaSel = null;
 
 const params = new URLSearchParams(window.location.search);
 const psiId = params.get('id');
+const psiSlug = params.get('slug');
 
 function horariosPorPeriodo(disponibilidade) {
   const periodos = {
@@ -409,6 +410,23 @@ function inicialStr(nome) {
 
 function formatarData(d) {
   return d.toLocaleDateString('pt-BR', { weekday:'short', day:'numeric', month:'short' });
+}
+
+async function marcarDiasBloqueados() {
+  if (!psicologo?.id || psicologo.id.toString().startsWith('demo-')) return;
+
+  const dias = gerarDias();
+  const inicio = dias[0].toISOString().slice(0, 10);
+  const fim = dias[dias.length - 1].toISOString().slice(0, 10);
+
+  const { data: ausencias } = await db.from('ausencias').select('data_inicio, data_fim').eq('psicologo_id', psicologo.id).lte('data_inicio', fim).gte('data_fim', inicio);
+  if (!ausencias?.length) return;
+
+  document.querySelectorAll('.dia-btn').forEach((btn, i) => {
+    const isoData = dias[i].toISOString().slice(0, 10);
+    const bloqueado = ausencias.some(a => isoData >= a.data_inicio && isoData <= a.data_fim);
+    if (bloqueado) btn.classList.add('disabled');
+  });
 }
 
 function renderizarPerfil(p) {
@@ -576,11 +594,57 @@ async function buscarSlotsOcupados(psicologoId, dataISO) {
   return ocupados;
 }
 
+let DISPONIBILIDADE_CACHE = null;
+
+async function buscarDisponibilidadeSemanal(psicologoId) {
+  if (!psicologoId || psicologoId.toString().startsWith('demo-')) return [];
+  if (DISPONIBILIDADE_CACHE !== null) return DISPONIBILIDADE_CACHE;
+  const { data } = await db.from('disponibilidade_semanal').select('*').eq('psicologo_id', psicologoId).eq('ativo', true);
+  DISPONIBILIDADE_CACHE = data || [];
+  return DISPONIBILIDADE_CACHE;
+}
+
+async function estaEmAusencia(psicologoId, dataISO) {
+  if (!psicologoId || psicologoId.toString().startsWith('demo-')) return false;
+  const { data } = await db.from('ausencias').select('id').eq('psicologo_id', psicologoId).lte('data_inicio', dataISO).gte('data_fim', dataISO).limit(1);
+  return (data || []).length > 0;
+}
+
+function gerarSlotsDeBloco(horaInicio, horaFim, duracao) {
+  const slots = [];
+  const [h, m] = horaInicio.slice(0, 5).split(':').map(Number);
+  const [hf, mf] = horaFim.slice(0, 5).split(':').map(Number);
+  let atualMin = h * 60 + m;
+  const fimMin = hf * 60 + mf;
+  while (atualMin + duracao <= fimMin) {
+    slots.push(String(Math.floor(atualMin / 60)).padStart(2, '0') + ':' + String(atualMin % 60).padStart(2, '0'));
+    atualMin += duracao;
+  }
+  return slots;
+}
+
+async function candidatosParaData(psicologoId, dataISO) {
+  const blocos = await buscarDisponibilidadeSemanal(psicologoId);
+
+  // Fallback: psicólogo ainda não configurou horário recorrente nenhum —
+  // usa o sistema antigo, mais genérico, baseado só no período (manhã/tarde/noite).
+  if (!blocos.length) return horariosPorPeriodo(psicologo.disponibilidade);
+
+  if (await estaEmAusencia(psicologoId, dataISO)) return [];
+
+  const diaSemana = new Date(dataISO + 'T00:00:00').getDay();
+  const blocosDoDia = blocos.filter(b => b.dia_semana === diaSemana);
+
+  let slots = [];
+  blocosDoDia.forEach(b => { slots = slots.concat(gerarSlotsDeBloco(b.hora_inicio, b.hora_fim, b.duracao_sessao)); });
+  return slots;
+}
+
 async function atualizarHorarios(dataISO) {
   const cont = document.getElementById('horarios-container');
   cont.innerHTML = '<p style="color:var(--muted);font-size:13px;grid-column:1/-1">Verificando horários livres...</p>';
 
-  const candidatos = horariosPorPeriodo(psicologo.disponibilidade);
+  const candidatos = await candidatosParaData(psicologo.id, dataISO);
   const ocupados = await buscarSlotsOcupados(psicologo.id, dataISO);
 
   const agora = new Date();
@@ -790,23 +854,24 @@ async function enviarAvaliacao(pacienteId) {
 }
 
 async function carregar() {
-  if (!psiId) {
+  if (!psiId && !psiSlug) {
     window.location.href = 'psicologos.html';
     return;
   }
 
   // Tenta demo data primeiro (IDs demo-*)
-  if (psiId.startsWith('demo-') && demoData[psiId]) {
+  if (psiId && psiId.startsWith('demo-') && demoData[psiId]) {
     window._avaliacoesAtuais = [];
     renderizarPerfil(demoData[psiId]);
     return;
   }
 
-  const { data, error } = await db
-    .from('psicologos_publico')
-    .select('id, nome, crp, abordagem, foto_url, especialidades, temas, disponibilidade, bio, sobre_mim, formacao, pos_graduacao')
-    .eq('id', psiId)
-    .maybeSingle();
+  let query = db.from('psicologos_publico')
+    .select('id, nome, crp, abordagem, foto_url, especialidades, temas, disponibilidade, bio, sobre_mim, formacao, pos_graduacao, slug');
+
+  query = psiSlug ? query.eq('slug', psiSlug) : query.eq('id', psiId);
+
+  const { data, error } = await query.maybeSingle();
 
   if (error || !data) {
     document.getElementById('conteudo').innerHTML = `
@@ -818,6 +883,7 @@ async function carregar() {
 
   await carregarAvaliacoes(data.id);
   renderizarPerfil(data);
+  marcarDiasBloqueados();
 }
 
 carregar();

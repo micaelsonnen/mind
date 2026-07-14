@@ -1448,7 +1448,7 @@ async function fazerLogin() {
   let lista = demoFaixa;
 
   try {
-    const { data } = await db.from('psicologos_publico').select('id, nome, crp, abordagem, foto_url').limit(20);
+    const { data } = await db.from('psicologos_publico').select('id, nome, crp, abordagem, foto_url, slug').limit(20);
     if (data && data.length > 0) lista = data;
   } catch(e) {}
 
@@ -1465,7 +1465,7 @@ async function fazerLogin() {
   if (!track) return;
 
   track.innerHTML = loop.map(p => `
-    <a href="psicologo.html?id=${p.id}" class="psi-mini-card">
+    <a href="psicologo.html?${p.slug ? 'slug=' + p.slug : 'id=' + p.id}" class="psi-mini-card">
       <div class="psi-mini-avatar">${p.foto_url ? `<img src="${escapeHtml(p.foto_url)}" alt="${escapeHtml(p.nome)}">` : iniciais(p.nome)}</div>
       <div class="psi-mini-nome">${escapeHtml(p.nome) || 'Psicólogo'}</div>
       <div class="psi-mini-crp">${escapeHtml(p.crp) || ''}</div>

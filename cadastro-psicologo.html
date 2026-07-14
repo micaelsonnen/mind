@@ -213,6 +213,11 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
         </select>
       </div>
 
+      <div class="form-group" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="at-perfil-publico" checked style="width:auto">
+        <label style="margin:0;text-transform:none;font-size:13px" for="at-perfil-publico">Deixar meu perfil visível na vitrine pública (dá pra mudar isso depois no seu painel)</label>
+      </div>
+
       <div id="msg-atendimento" class="msg"></div>
       <div class="actions"><button class="btn-salvar" onclick="salvarAtendimento()">Salvar e continuar</button></div>
     </div>
@@ -447,7 +452,8 @@ async function salvarAtendimento() {
     especialidades: tags.especialidades,
     temas: tags.temas,
     idade_minima: parseInt(document.getElementById('at-idade-min').value) || null,
-    idade_maxima: parseInt(document.getElementById('at-idade-max').value) || null
+    idade_maxima: parseInt(document.getElementById('at-idade-max').value) || null,
+    perfil_publico: document.getElementById('at-perfil-publico').checked
   }).eq('id', psicologoId);
 
   if (error) { mostrarMsg('msg-atendimento', 'Erro ao salvar: ' + error.message, 'error'); return; }
