@@ -1,0 +1,29 @@
+name: Snapshot do banco Supabase
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      supabase_db_url: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump do schema (tabelas, políticas RLS, etc.)
+        run: supabase db dump --db-url "$supabase_db_url" -f supabase/schema.sql
+
+      - name: Commit automático se houver mudança
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Atualização automática do schema do Supabase"
+          file_pattern: supabase/schema.sql
