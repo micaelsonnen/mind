@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     env:
-      supabase_db_url: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +19,11 @@ jobs:
         with:
           version: latest
 
-      - name: Dump do schema (tabelas, políticas RLS, etc.)
-        run: supabase db dump --db-url "$supabase_db_url" -f supabase/schema.sql
+      - name: Link ao projeto
+        run: supabase link --project-ref xzkmokjyaqutkjxqlkck
+
+      - name: Dump do schema
+        run: supabase db dump --linked -f supabase/schema.sql
 
       - name: Commit automático se houver mudança
         uses: stefanzweifel/git-auto-commit-action@v5
