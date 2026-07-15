@@ -99,6 +99,7 @@ tbody tr:last-child td { border-bottom: none; }
       <a href="#" class="active" onclick="mostrarAba('visao', this)"><span class="nav-icon">🏠</span>Visão Geral</a>
       <a href="#" onclick="mostrarAba('pacientes', this)"><span class="nav-icon">👥</span>Pacientes</a>
       <a href="#" onclick="mostrarAba('agenda', this)"><span class="nav-icon">📅</span>Agenda</a>
+      <a href="#" onclick="mostrarAba('atendimentos', this)"><span class="nav-icon">📋</span>Atendimentos</a>
       <a href="#" onclick="mostrarAba('horarios', this)"><span class="nav-icon">⏰</span>Horários</a>
       <a href="#" onclick="mostrarAba('financeiro', this)"><span class="nav-icon">💰</span>Financeiro</a>
       <a href="meus-dados.html"><span class="nav-icon">🔒</span>Meus Dados</a>
@@ -228,6 +229,42 @@ tbody tr:last-child td { border-bottom: none; }
           <div style="flex:1;min-width:160px"><label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Motivo (opcional)</label><input type="text" id="aus-motivo" style="width:100%" placeholder="Férias"></div>
           <button class="btn-secundario" onclick="adicionarAusencia()">+ Bloquear período</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ABA: ATENDIMENTOS -->
+    <div id="aba-atendimentos" class="tab-section">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0">📋 Todos os atendimentos</h3>
+          <span class="meta" id="contagem-atendimentos" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:1;min-width:180px">
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Paciente</label>
+            <input type="text" id="atend-busca-paciente" placeholder="Buscar por nome..." oninput="filtrarAtendimentos()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 14px;font-size:13px;font-family:inherit">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Status</label>
+            <select id="atend-filtro-status" onchange="filtrarAtendimentos()" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 14px;font-size:13px;font-family:inherit">
+              <option value="">Todos</option>
+              <option value="agendada">Agendada</option>
+              <option value="realizada">Realizada</option>
+              <option value="falta">Falta</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">De</label>
+            <input type="date" id="atend-data-inicial" onchange="filtrarAtendimentos()" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Até</label>
+            <input type="date" id="atend-data-final" onchange="filtrarAtendimentos()" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px">
+          </div>
+          <button class="link" style="background:none;border:1px solid var(--border);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600" onclick="limparFiltrosAtendimentos()">Limpar filtros</button>
+        </div>
+        <div id="tabela-atendimentos"><div class="loading">Carregando...</div></div>
       </div>
     </div>
 
@@ -558,15 +595,82 @@ function mostrarAba(nome, el) {
   document.getElementById('aba-' + nome).classList.add('active');
   el.classList.add('active');
 
-  const titulos = { visao: ['Visão Geral', 'Resumo da sua prática'], pacientes: ['Pacientes', 'Lista de pacientes em acompanhamento'], agenda: ['Agenda', 'Próximas sessões'], horarios: ['Horários', 'Disponibilidade e visibilidade do perfil'], financeiro: ['Financeiro', 'Repasses e pagamentos'] };
+  const titulos = { visao: ['Visão Geral', 'Resumo da sua prática'], pacientes: ['Pacientes', 'Lista de pacientes em acompanhamento'], agenda: ['Agenda', 'Próximas sessões'], atendimentos: ['Atendimentos', 'Histórico completo de sessões'], horarios: ['Horários', 'Disponibilidade e visibilidade do perfil'], financeiro: ['Financeiro', 'Repasses e pagamentos'] };
   const [t, s] = titulos[nome] || ['', ''];
   document.getElementById('titulo-pagina').textContent = t;
   document.getElementById('subtitulo-pagina').textContent = s;
 
   if (nome === 'pacientes') carregarPacientes();
   if (nome === 'agenda') { carregarSolicitacoes(); carregarAgenda(); }
+  if (nome === 'atendimentos') carregarAtendimentos();
   if (nome === 'horarios') carregarHorarios();
   if (nome === 'financeiro') carregarFinanceiro();
+}
+
+/* ---------------- ATENDIMENTOS (histórico consolidado, com filtros) ---------------- */
+
+let TODOS_ATENDIMENTOS = [];
+
+const STATUS_LABEL = { agendada: ['alerta', 'Agendada'], realizada: ['ok', 'Realizada'], falta: ['falta', 'Falta'], cancelada: ['falta', 'Cancelada'] };
+
+async function carregarAtendimentos() {
+  const el = document.getElementById('tabela-atendimentos');
+  el.innerHTML = '<div class="loading">Carregando...</div>';
+
+  const { data } = await db.from('sessoes').select('id, data_hora, status, resumo_sessao, valor_psicologo, pacientes(id, nome)').eq('psicologo_id', psicologoId).order('data_hora', { ascending: false });
+
+  TODOS_ATENDIMENTOS = data || [];
+  filtrarAtendimentos();
+}
+
+function filtrarAtendimentos() {
+  const termo = document.getElementById('atend-busca-paciente').value.toLowerCase();
+  const status = document.getElementById('atend-filtro-status').value;
+  const dataIni = document.getElementById('atend-data-inicial').value;
+  const dataFim = document.getElementById('atend-data-final').value;
+
+  const filtrados = TODOS_ATENDIMENTOS.filter(s => {
+    const bateNome = (s.pacientes?.nome || '').toLowerCase().includes(termo);
+    const bateStatus = !status || s.status === status;
+    const dataSessao = s.data_hora?.slice(0, 10);
+    const bateIni = !dataIni || dataSessao >= dataIni;
+    const bateFim = !dataFim || dataSessao <= dataFim;
+    return bateNome && bateStatus && bateIni && bateFim;
+  });
+
+  desenharAtendimentos(filtrados);
+}
+
+function limparFiltrosAtendimentos() {
+  document.getElementById('atend-busca-paciente').value = '';
+  document.getElementById('atend-filtro-status').value = '';
+  document.getElementById('atend-data-inicial').value = '';
+  document.getElementById('atend-data-final').value = '';
+  filtrarAtendimentos();
+}
+
+function desenharAtendimentos(lista) {
+  document.getElementById('contagem-atendimentos').textContent = `${lista.length} de ${TODOS_ATENDIMENTOS.length} atendimento(s)`;
+
+  const el = document.getElementById('tabela-atendimentos');
+  if (!lista.length) { el.innerHTML = '<div class="empty">Nenhum atendimento encontrado com esses filtros</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr><th>Data/Hora</th><th>Paciente</th><th>Status</th><th>Resumo</th><th>Valor</th></tr></thead>
+    <tbody>${lista.map(s => {
+      const dt = new Date(s.data_hora);
+      const dataFmt = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const [cls, label] = STATUS_LABEL[s.status] || ['alerta', s.status];
+      const resumoCurto = s.resumo_sessao ? (s.resumo_sessao.length > 60 ? escapeHtml(s.resumo_sessao.slice(0, 60)) + '…' : escapeHtml(s.resumo_sessao)) : '—';
+      return `<tr>
+        <td>${dataFmt}</td>
+        <td>${s.pacientes?.id ? `<a class="link" href="paciente.html?id=${s.pacientes.id}">${escapeHtml(s.pacientes.nome)}</a>` : '—'}</td>
+        <td><span class="badge ${cls}">${label}</span></td>
+        <td style="max-width:280px">${resumoCurto}</td>
+        <td>R$ ${(s.valor_psicologo || 50).toFixed(2)}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
 }
 
 /* ---------------- HORÁRIOS (disponibilidade, ausências, visibilidade) ---------------- */
