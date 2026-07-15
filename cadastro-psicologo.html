@@ -197,6 +197,12 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
           <input type="text" placeholder="Digite e pressione Enter" onkeydown="adicionarTag(event, 'temas')">
         </div>
       </div>
+      <div class="form-group">
+        <label>Idiomas</label>
+        <div class="tag-input-wrap" id="tags-idiomas">
+          <input type="text" placeholder="Ex: Português, Inglês, Espanhol" onkeydown="adicionarTag(event, 'idiomas')">
+        </div>
+      </div>
 
       <div class="form-group-row">
         <div class="form-group"><label>Idade mínima atendida</label><input type="number" id="at-idade-min" value="18"></div>
@@ -264,7 +270,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let psicologoId = null;
 let userId = null;
-const tags = { especialidades: [], temas: [] };
+const tags = { especialidades: [], temas: [], idiomas: [] };
 
 function mostrarMsg(id, texto, tipo) {
   const el = document.getElementById(id);
@@ -451,6 +457,7 @@ async function salvarAtendimento() {
     formacao: document.getElementById('at-formacao').value.trim(),
     especialidades: tags.especialidades,
     temas: tags.temas,
+    idiomas: tags.idiomas,
     idade_minima: parseInt(document.getElementById('at-idade-min').value) || null,
     idade_maxima: parseInt(document.getElementById('at-idade-max').value) || null,
     perfil_publico: document.getElementById('at-perfil-publico').checked
