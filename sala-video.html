@@ -42,6 +42,31 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const params = new URLSearchParams(window.location.search);
 const sessaoId = params.get('sessao');
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function atualizarStatus(msg) {
+  const p = document.querySelector('.estado p');
+  if (p) p.textContent = msg;
+}
+
+// Chama `fnCheck` repetidamente até ela devolver algo diferente de
+// null, ou desistir depois de várias tentativas. Cada chamada é uma
+// nova transação — é assim que o pg_net consegue processar o pedido
+// em segundo plano entre uma tentativa e outra.
+async function aguardarResultado(fnNome, args, mensagem) {
+  atualizarStatus(mensagem);
+  for (let tentativa = 0; tentativa < 25; tentativa++) {
+    const { data, error } = await db.rpc(fnNome, args);
+    if (error) throw error;
+    if (data) return data;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  throw new Error('A sala está demorando demais para ficar pronta. Tente novamente em instantes.');
+}
+
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
@@ -51,23 +76,34 @@ async function init() {
     return;
   }
 
-  const { data, error } = await db.rpc('obter_ou_criar_sala_video', { p_sessao_id: sessaoId });
+  try {
+    // 1. Sala: reaproveita se já existe, senão dispara a criação e espera
+    const { data: sessaoAtual, error: erroSessao } = await db.from('sessoes').select('video_room_url').eq('id', sessaoId).maybeSingle();
+    if (erroSessao) throw erroSessao;
 
-  if (error || !data?.url) {
-    mostrarErro(error?.message || 'Não foi possível entrar nesta sessão.');
-    return;
+    let roomUrl = sessaoAtual?.video_room_url;
+
+    if (!roomUrl) {
+      atualizarStatus('Criando sua sala...');
+      const { data: requestId, error: erroIniciar } = await db.rpc('iniciar_criar_sala', { p_sessao_id: sessaoId });
+      if (erroIniciar) throw erroIniciar;
+      roomUrl = await aguardarResultado('checar_criar_sala', { p_sessao_id: sessaoId, p_request_id: requestId }, 'Criando sua sala...');
+    }
+
+    // 2. Token pessoal de entrada — sempre gerado na hora (é de uso único/curto)
+    atualizarStatus('Liberando seu acesso...');
+    const { data: tokenRequestId, error: erroToken } = await db.rpc('iniciar_criar_token', { p_sessao_id: sessaoId });
+    if (erroToken) throw erroToken;
+    const token = await aguardarResultado('checar_criar_token', { p_request_id: tokenRequestId }, 'Liberando seu acesso...');
+
+    const iframe = document.createElement('iframe');
+    iframe.src = roomUrl + '?t=' + token;
+    iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
+    document.getElementById('conteudo').innerHTML = '';
+    document.getElementById('conteudo').appendChild(iframe);
+  } catch (e) {
+    mostrarErro(e.message || 'Não foi possível entrar nesta sessão.');
   }
-
-  const iframe = document.createElement('iframe');
-  iframe.src = data.url + '?t=' + data.token;
-  iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
-  document.getElementById('conteudo').innerHTML = '';
-  document.getElementById('conteudo').appendChild(iframe);
-}
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function mostrarErro(msg) {
