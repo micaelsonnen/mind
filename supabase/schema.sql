@@ -87,6 +87,59 @@ $$;
 ALTER FUNCTION "public"."admin_metricas_gerais"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_status   int;
+  v_conteudo text;
+  v_nome     text;
+  v_url      text;
+begin
+  select status_code, content into v_status, v_conteudo from net._http_response where id = p_request_id;
+
+  if v_status is null then
+    return null; -- ainda não chegou — o front-end tenta de novo em breve
+  end if;
+
+  if v_status >= 400 then
+    raise exception 'Erro da API do Daily.co (status %): %', v_status, v_conteudo;
+  end if;
+
+  v_url  := (v_conteudo::jsonb) ->> 'url';
+  v_nome := (v_conteudo::jsonb) ->> 'name';
+
+  update sessoes set video_room_url = v_url, video_room_name = v_nome, video_room_criado_em = now()
+  where id = p_sessao_id;
+
+  return v_url;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."checar_criar_token"("p_request_id" bigint) RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  v_status   int;
+  v_conteudo text;
+begin
+  select status_code, content into v_status, v_conteudo from net._http_response where id = p_request_id;
+  if v_status is null then return null; end if;
+  if v_status >= 400 then raise exception 'Erro da API do Daily.co (status %): %', v_status, v_conteudo; end if;
+  return (v_conteudo::jsonb) ->> 'token';
+end;
+$$;
+
+
+ALTER FUNCTION "public"."checar_criar_token"("p_request_id" bigint) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") RETURNS bigint
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -221,6 +274,112 @@ $$;
 ALTER FUNCTION "public"."gerar_slug_psicologo"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."iniciar_criar_sala"("p_sessao_id" "uuid") RETURNS bigint
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'vault', 'extensions'
+    AS $$
+declare
+  v_sessao     record;
+  v_api_key    text;
+  v_video_nome text;
+  v_request_id bigint;
+begin
+  select s.id, s.data_hora, s.video_room_url,
+         ps.email as psi_email, p.email as pac_email
+  into v_sessao
+  from sessoes s
+  join psicologos ps on ps.id = s.psicologo_id
+  join pacientes p on p.id = s.paciente_id
+  where s.id = p_sessao_id;
+
+  if v_sessao.id is null then raise exception 'Sessão não encontrada.'; end if;
+  if not (v_sessao.psi_email = auth.jwt() ->> 'email' or v_sessao.pac_email = auth.jwt() ->> 'email') then
+    raise exception 'Acesso negado — você não faz parte desta sessão.';
+  end if;
+
+  select decrypted_secret into v_api_key from vault.decrypted_secrets where name = 'daily_api_key';
+  if v_api_key is null then raise exception 'daily_api_key não encontrada no Vault.'; end if;
+
+  v_video_nome := 'puzzle-' || replace(p_sessao_id::text, '-', '');
+
+  v_request_id := net.http_post(
+    url := 'https://api.daily.co/v1/rooms',
+    headers := jsonb_build_object('Authorization', 'Bearer ' || v_api_key, 'Content-Type', 'application/json'),
+    body := jsonb_build_object(
+      'name', v_video_nome,
+      'privacy', 'private',
+      'properties', jsonb_build_object(
+        'exp', extract(epoch from greatest(now() + interval '30 minutes', v_sessao.data_hora + interval '3 hours'))::bigint,
+        'enable_chat', true,
+        'enable_recording', false,
+        'eject_at_room_exp', true
+      )
+    )
+  );
+
+  return v_request_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."iniciar_criar_sala"("p_sessao_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") RETURNS bigint
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'vault', 'extensions'
+    AS $$
+declare
+  v_sessao     record;
+  v_api_key    text;
+  v_sou_psi    boolean;
+  v_meu_nome   text;
+  v_request_id bigint;
+begin
+  select s.id, s.video_room_name,
+         ps.email as psi_email, ps.nome as psi_nome,
+         p.email as pac_email, p.nome as pac_nome
+  into v_sessao
+  from sessoes s
+  join psicologos ps on ps.id = s.psicologo_id
+  join pacientes p on p.id = s.paciente_id
+  where s.id = p_sessao_id;
+
+  if v_sessao.id is null then raise exception 'Sessão não encontrada.'; end if;
+
+  v_sou_psi := v_sessao.psi_email = auth.jwt() ->> 'email';
+  if not (v_sou_psi or v_sessao.pac_email = auth.jwt() ->> 'email') then
+    raise exception 'Acesso negado — você não faz parte desta sessão.';
+  end if;
+
+  if v_sessao.video_room_name is null then
+    raise exception 'A sala ainda não foi criada — chame iniciar_criar_sala primeiro.';
+  end if;
+
+  select decrypted_secret into v_api_key from vault.decrypted_secrets where name = 'daily_api_key';
+  v_meu_nome := case when v_sou_psi then v_sessao.psi_nome else v_sessao.pac_nome end;
+
+  v_request_id := net.http_post(
+    url := 'https://api.daily.co/v1/meeting-tokens',
+    headers := jsonb_build_object('Authorization', 'Bearer ' || v_api_key, 'Content-Type', 'application/json'),
+    body := jsonb_build_object(
+      'properties', jsonb_build_object(
+        'room_name', v_sessao.video_room_name,
+        'is_owner', v_sou_psi,
+        'user_name', v_meu_nome,
+        'exp', extract(epoch from (now() + interval '3 hours'))::bigint
+      )
+    )
+  );
+
+  return v_request_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'vault', 'extensions'
@@ -285,82 +444,6 @@ $$;
 
 
 ALTER FUNCTION "public"."mind_notificar_agendamento_aceito"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
-  v_sessao       record;
-  v_sou_psi      boolean;
-  v_sou_pac      boolean;
-  v_video_url    text;
-  v_video_nome   text;
-  v_resposta     jsonb;
-  v_token_resp   jsonb;
-  v_meu_nome     text;
-begin
-  select s.id, s.data_hora, s.video_room_url, s.video_room_name,
-         ps.email as psi_email, ps.nome as psi_nome,
-         p.email as pac_email, p.nome as pac_nome
-  into v_sessao
-  from sessoes s
-  join psicologos ps on ps.id = s.psicologo_id
-  join pacientes p on p.id = s.paciente_id
-  where s.id = p_sessao_id;
-
-  if v_sessao.id is null then
-    raise exception 'Sessão não encontrada.';
-  end if;
-
-  v_sou_psi := v_sessao.psi_email = auth.jwt() ->> 'email';
-  v_sou_pac := v_sessao.pac_email = auth.jwt() ->> 'email';
-
-  if not (v_sou_psi or v_sou_pac) then
-    raise exception 'Acesso negado — você não faz parte desta sessão.';
-  end if;
-
-  v_video_url  := v_sessao.video_room_url;
-  v_video_nome := v_sessao.video_room_name;
-
-  if v_video_url is null then
-    v_video_nome := 'puzzle-' || replace(p_sessao_id::text, '-', '');
-
-    v_resposta := daily_chamada_api('POST', '/rooms', jsonb_build_object(
-      'name', v_video_nome,
-      'privacy', 'private',
-      'properties', jsonb_build_object(
-        'exp', extract(epoch from (v_sessao.data_hora + interval '3 hours'))::bigint,
-        'enable_chat', true,
-        'enable_recording', false,
-        'eject_at_room_exp', true
-      )
-    ));
-
-    v_video_url := v_resposta ->> 'url';
-
-    update sessoes set video_room_url = v_video_url, video_room_name = v_video_nome, video_room_criado_em = now()
-    where id = p_sessao_id;
-  end if;
-
-  v_meu_nome := case when v_sou_psi then v_sessao.psi_nome else v_sessao.pac_nome end;
-
-  v_token_resp := daily_chamada_api('POST', '/meeting-tokens', jsonb_build_object(
-    'properties', jsonb_build_object(
-      'room_name', v_video_nome,
-      'is_owner', v_sou_psi,
-      'user_name', v_meu_nome,
-      'exp', extract(epoch from (now() + interval '3 hours'))::bigint
-    )
-  ));
-
-  return jsonb_build_object('url', v_video_url, 'token', v_token_resp ->> 'token');
-end;
-$$;
-
-
-ALTER FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
@@ -1834,6 +1917,18 @@ GRANT ALL ON FUNCTION "public"."admin_metricas_gerais"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."checar_criar_token"("p_request_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."checar_criar_token"("p_request_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."checar_criar_token"("p_request_id" bigint) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "service_role";
@@ -1864,6 +1959,18 @@ GRANT ALL ON FUNCTION "public"."gerar_slug_psicologo"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."iniciar_criar_sala"("p_sessao_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."iniciar_criar_sala"("p_sessao_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."iniciar_criar_sala"("p_sessao_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "service_role";
@@ -1873,13 +1980,6 @@ GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "t
 GRANT ALL ON FUNCTION "public"."mind_notificar_agendamento_aceito"() TO "anon";
 GRANT ALL ON FUNCTION "public"."mind_notificar_agendamento_aceito"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mind_notificar_agendamento_aceito"() TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."obter_ou_criar_sala_video"("p_sessao_id" "uuid") TO "service_role";
 
 
 
