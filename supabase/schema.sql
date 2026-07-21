@@ -87,6 +87,203 @@ $$;
 ALTER FUNCTION "public"."admin_metricas_gerais"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."alocar_valor_sessao"("p_paciente_id" "uuid") RETURNS TABLE("valor_paciente" numeric, "valor_empresa" numeric, "valor_repasse_psicologo" numeric, "pacote_id" "uuid", "status_financeiro" "text")
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_config record;
+  v_tem_vulnerabilidade boolean;
+  v_pacote record;
+begin
+  select * into v_config from config_precos_sessao where id = 1;
+  v_tem_vulnerabilidade := paciente_tem_vulnerabilidade_valida(p_paciente_id);
+
+  -- sem aprovação de vulnerabilidade válida -> paga valor integral,
+  -- não disputa vaga de pacote nenhum
+  if not v_tem_vulnerabilidade then
+    return query select
+      v_config.valor_sessao_integral,
+      0.00::numeric,
+      v_config.valor_repasse_psicologo,
+      null::uuid,
+      'confirmado'::text;
+    return;
+  end if;
+
+  select * into v_pacote
+  from pacotes_empresa
+  where sessoes_utilizadas < quantidade_sessoes
+    and vigencia_fim >= current_date
+  order by vigencia_fim asc
+  for update skip locked
+  limit 1;
+
+  if v_pacote is null then
+    -- nenhum pacote de empresa com saldo disponível agora
+    return query select
+      null::numeric,
+      null::numeric,
+      null::numeric,
+      null::uuid,
+      'aguardando_empresa'::text;
+    return;
+  end if;
+
+  update pacotes_empresa
+  set sessoes_utilizadas = sessoes_utilizadas + 1
+  where id = v_pacote.id;
+
+  return query select
+    v_config.valor_copagamento_social,
+    v_config.valor_subsidio_empresa,
+    v_config.valor_repasse_psicologo,
+    v_pacote.id,
+    'confirmado'::text;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."alocar_valor_sessao"("p_paciente_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."aplicar_valor_social_paciente"("p_paciente_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_config record;
+  v_valido boolean;
+  v_paciente record;
+  v_pacote record;
+begin
+  select * into v_config from config_precos_sessao where id = 1;
+  v_valido := paciente_tem_vulnerabilidade_valida(p_paciente_id);
+
+  select * into v_paciente from pacientes where id = p_paciente_id for update;
+
+  -- caso 1: não tem (ou perdeu) aprovação válida -> libera a vaga, se tinha
+  if not v_valido then
+    if v_paciente.pacote_ativo_id is not null then
+      update pacotes_empresa set vagas_ocupadas = vagas_ocupadas - 1
+      where id = v_paciente.pacote_ativo_id;
+    end if;
+
+    update pacientes
+    set pacote_ativo_id = null,
+        status_financeiro_social = 'nenhum',
+        aguardando_desde = null,
+        valor_paciente = v_config.valor_sessao_integral
+    where id = p_paciente_id;
+    return;
+  end if;
+
+  -- caso 2: já tem vaga confirmada, e o pacote ainda está vigente -> nada a fazer
+  if v_paciente.pacote_ativo_id is not null then
+    select * into v_pacote from pacotes_empresa where id = v_paciente.pacote_ativo_id;
+
+    if v_pacote.vigencia_fim >= current_date then
+      return;
+    end if;
+
+    -- pacote expirou: libera antes de tentar realocar
+    update pacotes_empresa set vagas_ocupadas = vagas_ocupadas - 1 where id = v_pacote.id;
+    update pacientes set pacote_ativo_id = null where id = p_paciente_id;
+  end if;
+
+  -- caso 3: aprovado, sem vaga -> tenta reservar uma (prioriza pacote que vence primeiro)
+  select * into v_pacote
+  from pacotes_empresa
+  where vagas_ocupadas < quantidade_vagas
+    and vigencia_fim >= current_date
+  order by vigencia_fim asc
+  for update skip locked
+  limit 1;
+
+  if v_pacote is null then
+    update pacientes
+    set status_financeiro_social = 'aguardando_empresa',
+        aguardando_desde = coalesce(aguardando_desde, now()),
+        pacote_ativo_id = null
+        -- valor_paciente não é mexido aqui de propósito: fica com o que
+        -- já estava (normalmente o integral), até uma vaga liberar
+    where id = p_paciente_id;
+    return;
+  end if;
+
+  update pacotes_empresa set vagas_ocupadas = vagas_ocupadas + 1 where id = v_pacote.id;
+
+  update pacientes
+  set pacote_ativo_id = v_pacote.id,
+      status_financeiro_social = 'confirmado',
+      aguardando_desde = null,
+      valor_paciente = v_config.valor_copagamento_social
+  where id = p_paciente_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."aplicar_valor_social_paciente"("p_paciente_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_pontos int := 0;
+  v_config record;
+begin
+  select * into v_config from config_geral_vulnerabilidade where id = 1;
+
+  if new.possui_cadunico then
+    v_pontos := v_pontos + coalesce(
+      (select pontos from config_pontuacao_vulnerabilidade
+       where criterio = 'possui_cadunico' and ativo), 0);
+  end if;
+
+  if new.beneficiario_bolsa_familia then
+    v_pontos := v_pontos + coalesce(
+      (select pontos from config_pontuacao_vulnerabilidade
+       where criterio = 'beneficiario_bolsa_familia' and ativo), 0);
+  end if;
+
+  if new.renda_per_capita is not null
+     and new.renda_per_capita < v_config.renda_per_capita_limite then
+    v_pontos := v_pontos + coalesce(
+      (select pontos from config_pontuacao_vulnerabilidade
+       where criterio = 'renda_per_capita_baixa' and ativo), 0);
+  end if;
+
+  if new.situacao_emprego = 'desempregado' then
+    v_pontos := v_pontos + coalesce(
+      (select pontos from config_pontuacao_vulnerabilidade
+       where criterio = 'desempregado' and ativo), 0);
+  end if;
+
+  if new.pessoa_deficiencia_familia then
+    v_pontos := v_pontos + coalesce(
+      (select pontos from config_pontuacao_vulnerabilidade
+       where criterio = 'pessoa_deficiencia_familia' and ativo), 0);
+  end if;
+
+  new.pontuacao_calculada := v_pontos;
+  new.atualizado_em := now();
+
+  -- só decide automaticamente se ainda não passou por revisão manual
+  if new.status not in ('aprovado_manual', 'rejeitado') then
+    if v_pontos >= v_config.pontuacao_limite_aprovacao then
+      new.status := 'aprovado_automatico';
+    else
+      new.status := 'pendente';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -149,6 +346,37 @@ $$;
 
 
 ALTER FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."copiar_valor_paciente_para_pagamento"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_paciente record;
+  v_config record;
+begin
+  if new.valor_paciente is null then
+    select * into v_paciente from pacientes where id = new.paciente_id;
+    select * into v_config from config_precos_sessao where id = 1;
+
+    new.valor_paciente := v_paciente.valor_paciente;
+    new.valor_repasse_psicologo := v_config.valor_repasse_psicologo;
+
+    if v_paciente.status_financeiro_social = 'confirmado' then
+      new.valor_empresa := v_config.valor_subsidio_empresa;
+      new.pacote_id := v_paciente.pacote_ativo_id;
+    else
+      new.valor_empresa := 0.00;
+      new.pacote_id := null;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."copiar_valor_paciente_para_pagamento"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."daily_chamada_api"("v_method" "text", "v_path" "text", "v_body" "jsonb") RETURNS "jsonb"
@@ -380,6 +608,31 @@ $$;
 ALTER FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."liberar_vagas_expiradas"() RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_paciente record;
+  v_processados int := 0;
+begin
+  for v_paciente in
+    select p.id
+    from pacientes p
+    join pacotes_empresa pe on pe.id = p.pacote_ativo_id
+    where pe.vigencia_fim < current_date
+  loop
+    perform aplicar_valor_social_paciente(v_paciente.id);
+    v_processados := v_processados + 1;
+  end loop;
+
+  return v_processados;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."liberar_vagas_expiradas"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'vault', 'extensions'
@@ -446,6 +699,106 @@ $$;
 ALTER FUNCTION "public"."mind_notificar_agendamento_aceito"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  update avaliacoes_socioeconomicas
+  set status = 'em_revisao', atualizado_em = now()
+  where id = new.avaliacao_id
+    and status = 'pendente';
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."preencher_valores_pagamento"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_calculo record;
+begin
+  if new.valor_paciente is null then
+    select * into v_calculo from alocar_valor_sessao(new.paciente_id);
+
+    new.valor_paciente := v_calculo.valor_paciente;
+    new.valor_empresa := v_calculo.valor_empresa;
+    new.valor_repasse_psicologo := v_calculo.valor_repasse_psicologo;
+    new.pacote_id := v_calculo.pacote_id;
+    new.status_financeiro := v_calculo.status_financeiro;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."preencher_valores_pagamento"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reprocessar_fila_espera_social"() RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_paciente record;
+  v_processados int := 0;
+begin
+  for v_paciente in
+    select id from pacientes
+    where status_financeiro_social = 'aguardando_empresa'
+    order by aguardando_desde asc
+  loop
+    perform aplicar_valor_social_paciente(v_paciente.id);
+    v_processados := v_processados + 1;
+  end loop;
+
+  return v_processados;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."reprocessar_fila_espera_social"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reprocessar_pagamentos_aguardando"() RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_pagamento record;
+  v_calculo record;
+  v_processados int := 0;
+begin
+  for v_pagamento in
+    select id, paciente_id from pagamentos
+    where status_financeiro = 'aguardando_empresa'
+    order by criado_em asc
+  loop
+    select * into v_calculo from alocar_valor_sessao(v_pagamento.paciente_id);
+
+    if v_calculo.status_financeiro = 'confirmado' then
+      update pagamentos
+      set valor_paciente = v_calculo.valor_paciente,
+          valor_empresa = v_calculo.valor_empresa,
+          valor_repasse_psicologo = v_calculo.valor_repasse_psicologo,
+          pacote_id = v_calculo.pacote_id,
+          status_financeiro = 'confirmado'
+      where id = v_pagamento.id;
+
+      v_processados := v_processados + 1;
+    end if;
+  end loop;
+
+  return v_processados;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."reprocessar_pagamentos_aguardando"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'pg_catalog'
@@ -476,6 +829,34 @@ $$;
 
 
 ALTER FUNCTION "public"."rls_auto_enable"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."trg_fn_avaliacao_status_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  if new.status in ('aprovado_automatico', 'aprovado_manual', 'rejeitado') then
+    perform aplicar_valor_social_paciente(new.paciente_id);
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."trg_fn_avaliacao_status_change"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."trg_fn_pacote_alterado"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  perform reprocessar_fila_espera_social();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."trg_fn_pacote_alterado"() OWNER TO "postgres";
 
 SET default_tablespace = '';
 
@@ -570,6 +951,30 @@ CREATE TABLE IF NOT EXISTS "public"."avaliacoes" (
 ALTER TABLE "public"."avaliacoes" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."avaliacoes_socioeconomicas" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "paciente_id" "uuid" NOT NULL,
+    "renda_per_capita" numeric(10,2),
+    "num_moradores" integer,
+    "situacao_emprego" "text",
+    "possui_cadunico" boolean DEFAULT false NOT NULL,
+    "beneficiario_bolsa_familia" boolean DEFAULT false NOT NULL,
+    "pessoa_deficiencia_familia" boolean DEFAULT false NOT NULL,
+    "pontuacao_calculada" integer DEFAULT 0 NOT NULL,
+    "status" "text" DEFAULT 'pendente'::"text" NOT NULL,
+    "revisado_por" "uuid",
+    "revisado_em" timestamp with time zone,
+    "observacoes_admin" "text",
+    "criado_em" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "atualizado_em" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "avaliacoes_socioeconomicas_situacao_emprego_check" CHECK (("situacao_emprego" = ANY (ARRAY['empregado_clt'::"text", 'empregado_informal'::"text", 'autonomo'::"text", 'desempregado'::"text", 'aposentado'::"text", 'outro'::"text"]))),
+    CONSTRAINT "avaliacoes_socioeconomicas_status_check" CHECK (("status" = ANY (ARRAY['pendente'::"text", 'aprovado_automatico'::"text", 'em_revisao'::"text", 'aprovado_manual'::"text", 'rejeitado'::"text"])))
+);
+
+
+ALTER TABLE "public"."avaliacoes_socioeconomicas" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."checkins" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "paciente_id" "uuid" NOT NULL,
@@ -580,6 +985,41 @@ CREATE TABLE IF NOT EXISTS "public"."checkins" (
 
 
 ALTER TABLE "public"."checkins" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."comprovantes_vulnerabilidade" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "avaliacao_id" "uuid" NOT NULL,
+    "tipo_documento" "text" NOT NULL,
+    "caminho_arquivo" "text" NOT NULL,
+    "enviado_em" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "comprovantes_vulnerabilidade_tipo_documento_check" CHECK (("tipo_documento" = ANY (ARRAY['cadunico'::"text", 'folha_resumo'::"text", 'cartao_nis'::"text", 'comprovante_bolsa_familia'::"text", 'outro'::"text"])))
+);
+
+
+ALTER TABLE "public"."comprovantes_vulnerabilidade" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."config_geral_vulnerabilidade" (
+    "id" integer DEFAULT 1 NOT NULL,
+    "renda_per_capita_limite" numeric(10,2) DEFAULT 300.00 NOT NULL,
+    "pontuacao_limite_aprovacao" integer DEFAULT 60 NOT NULL,
+    CONSTRAINT "singleton" CHECK (("id" = 1))
+);
+
+
+ALTER TABLE "public"."config_geral_vulnerabilidade" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."config_pontuacao_vulnerabilidade" (
+    "criterio" "text" NOT NULL,
+    "pontos" integer NOT NULL,
+    "ativo" boolean DEFAULT true NOT NULL,
+    "descricao" "text"
+);
+
+
+ALTER TABLE "public"."config_pontuacao_vulnerabilidade" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."disponibilidade_semanal" (
@@ -698,7 +1138,11 @@ CREATE TABLE IF NOT EXISTS "public"."pacientes" (
     "endereco_cidade" "text",
     "endereco_estado" "text",
     "endereco_cep" "text",
-    "foto_url" "text"
+    "foto_url" "text",
+    "pacote_ativo_id" "uuid",
+    "status_financeiro_social" "text" DEFAULT 'nenhum'::"text",
+    "aguardando_desde" timestamp with time zone,
+    CONSTRAINT "pacientes_status_financeiro_social_check" CHECK (("status_financeiro_social" = ANY (ARRAY['nenhum'::"text", 'aguardando_empresa'::"text", 'confirmado'::"text"])))
 );
 
 
@@ -758,6 +1202,25 @@ CREATE TABLE IF NOT EXISTS "public"."pacientes_meupsi" (
 ALTER TABLE "public"."pacientes_meupsi" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."pacotes_empresa" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "empresa_id" "uuid" NOT NULL,
+    "quantidade_vagas" integer NOT NULL,
+    "vagas_ocupadas" integer DEFAULT 0 NOT NULL,
+    "valor_pago" numeric(10,2),
+    "vigencia_inicio" "date" DEFAULT CURRENT_DATE NOT NULL,
+    "vigencia_fim" "date" NOT NULL,
+    "criado_em" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "capacidade_valida" CHECK (("vagas_ocupadas" <= "quantidade_vagas")),
+    CONSTRAINT "pacotes_empresa_quantidade_vagas_check" CHECK (("quantidade_vagas" > 0)),
+    CONSTRAINT "pacotes_empresa_vagas_ocupadas_check" CHECK (("vagas_ocupadas" >= 0)),
+    CONSTRAINT "vigencia_valida" CHECK (("vigencia_fim" >= "vigencia_inicio"))
+);
+
+
+ALTER TABLE "public"."pacotes_empresa" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."pagamentos" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "paciente_id" "uuid" NOT NULL,
@@ -770,7 +1233,9 @@ CREATE TABLE IF NOT EXISTS "public"."pagamentos" (
     "valor_empresa" numeric(10,2) DEFAULT 40.00,
     "valor_psicologo" numeric(10,2) DEFAULT 50.00,
     "valor_total" numeric(10,2) DEFAULT 50.00,
-    "status_pagamento" "text" DEFAULT 'pendente'::"text"
+    "status_pagamento" "text" DEFAULT 'pendente'::"text",
+    "valor_repasse_psicologo" numeric(10,2),
+    "pacote_id" "uuid"
 );
 
 
@@ -878,6 +1343,26 @@ CREATE OR REPLACE VIEW "public"."psicologos_publico" AS
 
 
 ALTER VIEW "public"."psicologos_publico" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."resumo_pacotes_empresa" AS
+ SELECT "e"."id" AS "empresa_id",
+    "p"."id" AS "pacote_id",
+    "p"."quantidade_vagas",
+    "p"."vagas_ocupadas",
+    ("p"."quantidade_vagas" - "p"."vagas_ocupadas") AS "vagas_disponiveis",
+    "p"."vigencia_inicio",
+    "p"."vigencia_fim",
+        CASE
+            WHEN ("p"."vigencia_fim" < CURRENT_DATE) THEN 'expirado'::"text"
+            WHEN ("p"."vagas_ocupadas" >= "p"."quantidade_vagas") THEN 'esgotado'::"text"
+            ELSE 'ativo'::"text"
+        END AS "status_pacote"
+   FROM ("public"."pacotes_empresa" "p"
+     JOIN "public"."empresas" "e" ON (("e"."id" = "p"."empresa_id")));
+
+
+ALTER VIEW "public"."resumo_pacotes_empresa" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."sessoes" (
@@ -995,8 +1480,28 @@ ALTER TABLE ONLY "public"."avaliacoes"
 
 
 
+ALTER TABLE ONLY "public"."avaliacoes_socioeconomicas"
+    ADD CONSTRAINT "avaliacoes_socioeconomicas_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."checkins"
     ADD CONSTRAINT "checkins_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."comprovantes_vulnerabilidade"
+    ADD CONSTRAINT "comprovantes_vulnerabilidade_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."config_geral_vulnerabilidade"
+    ADD CONSTRAINT "config_geral_vulnerabilidade_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."config_pontuacao_vulnerabilidade"
+    ADD CONSTRAINT "config_pontuacao_vulnerabilidade_pkey" PRIMARY KEY ("criterio");
 
 
 
@@ -1042,6 +1547,11 @@ ALTER TABLE ONLY "public"."pacientes_meupsi"
 
 ALTER TABLE ONLY "public"."pacientes"
     ADD CONSTRAINT "pacientes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."pacotes_empresa"
+    ADD CONSTRAINT "pacotes_empresa_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1092,11 +1602,23 @@ CREATE INDEX "idx_autorizacoes_paciente" ON "public"."autorizacoes_suporte" USIN
 
 
 
+CREATE INDEX "idx_avaliacoes_paciente" ON "public"."avaliacoes_socioeconomicas" USING "btree" ("paciente_id");
+
+
+
 CREATE INDEX "idx_avaliacoes_psicologo" ON "public"."avaliacoes" USING "btree" ("psicologo_id", "criado_em" DESC);
 
 
 
+CREATE INDEX "idx_avaliacoes_status" ON "public"."avaliacoes_socioeconomicas" USING "btree" ("status");
+
+
+
 CREATE INDEX "idx_checkins_paciente" ON "public"."checkins" USING "btree" ("paciente_id");
+
+
+
+CREATE INDEX "idx_comprovantes_avaliacao" ON "public"."comprovantes_vulnerabilidade" USING "btree" ("avaliacao_id");
 
 
 
@@ -1124,6 +1646,10 @@ CREATE INDEX "idx_pacientes_psicologo" ON "public"."pacientes" USING "btree" ("p
 
 
 
+CREATE INDEX "idx_pacotes_empresa_disponivel" ON "public"."pacotes_empresa" USING "btree" ("vigencia_fim") WHERE ("vagas_ocupadas" < "quantidade_vagas");
+
+
+
 CREATE INDEX "idx_pagamentos_paciente" ON "public"."pagamentos" USING "btree" ("paciente_id");
 
 
@@ -1144,11 +1670,35 @@ CREATE INDEX "idx_sintomas_paciente" ON "public"."sintomas" USING "btree" ("paci
 
 
 
+CREATE OR REPLACE TRIGGER "trg_avaliacao_status_change" AFTER INSERT OR UPDATE OF "status" ON "public"."avaliacoes_socioeconomicas" FOR EACH ROW EXECUTE FUNCTION "public"."trg_fn_avaliacao_status_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_calcular_pontuacao" BEFORE INSERT OR UPDATE OF "possui_cadunico", "beneficiario_bolsa_familia", "renda_per_capita", "situacao_emprego", "pessoa_deficiencia_familia" ON "public"."avaliacoes_socioeconomicas" FOR EACH ROW EXECUTE FUNCTION "public"."calcular_pontuacao_vulnerabilidade"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_copiar_valor_pagamento" BEFORE INSERT ON "public"."pagamentos" FOR EACH ROW EXECUTE FUNCTION "public"."copiar_valor_paciente_para_pagamento"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_gerar_slug_psicologo" BEFORE INSERT ON "public"."psicologos" FOR EACH ROW EXECUTE FUNCTION "public"."gerar_slug_psicologo"();
 
 
 
+CREATE OR REPLACE TRIGGER "trg_mover_para_revisao" AFTER INSERT ON "public"."comprovantes_vulnerabilidade" FOR EACH ROW EXECUTE FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_notificar_agendamento_aceito" AFTER UPDATE ON "public"."agendamentos" FOR EACH ROW EXECUTE FUNCTION "public"."mind_notificar_agendamento_aceito"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_pacote_alterado" AFTER INSERT OR UPDATE OF "quantidade_vagas", "vigencia_fim" ON "public"."pacotes_empresa" FOR EACH ROW EXECUTE FUNCTION "public"."trg_fn_pacote_alterado"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_preencher_valores_pagamento" BEFORE INSERT ON "public"."pagamentos" FOR EACH ROW EXECUTE FUNCTION "public"."preencher_valores_pagamento"();
 
 
 
@@ -1197,8 +1747,23 @@ ALTER TABLE ONLY "public"."avaliacoes"
 
 
 
+ALTER TABLE ONLY "public"."avaliacoes_socioeconomicas"
+    ADD CONSTRAINT "avaliacoes_socioeconomicas_paciente_id_fkey" FOREIGN KEY ("paciente_id") REFERENCES "public"."pacientes"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."avaliacoes_socioeconomicas"
+    ADD CONSTRAINT "avaliacoes_socioeconomicas_revisado_por_fkey" FOREIGN KEY ("revisado_por") REFERENCES "auth"."users"("id");
+
+
+
 ALTER TABLE ONLY "public"."checkins"
     ADD CONSTRAINT "checkins_paciente_id_fkey" FOREIGN KEY ("paciente_id") REFERENCES "public"."pacientes"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."comprovantes_vulnerabilidade"
+    ADD CONSTRAINT "comprovantes_vulnerabilidade_avaliacao_id_fkey" FOREIGN KEY ("avaliacao_id") REFERENCES "public"."avaliacoes_socioeconomicas"("id") ON DELETE CASCADE;
 
 
 
@@ -1243,7 +1808,17 @@ ALTER TABLE ONLY "public"."pacientes_meupsi"
 
 
 ALTER TABLE ONLY "public"."pacientes"
+    ADD CONSTRAINT "pacientes_pacote_ativo_id_fkey" FOREIGN KEY ("pacote_ativo_id") REFERENCES "public"."pacotes_empresa"("id");
+
+
+
+ALTER TABLE ONLY "public"."pacientes"
     ADD CONSTRAINT "pacientes_psicologo_id_fkey" FOREIGN KEY ("psicologo_id") REFERENCES "public"."psicologos"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."pacotes_empresa"
+    ADD CONSTRAINT "pacotes_empresa_empresa_id_fkey" FOREIGN KEY ("empresa_id") REFERENCES "public"."empresas"("id") ON DELETE CASCADE;
 
 
 
@@ -1286,6 +1861,14 @@ CREATE POLICY "admin_confirma_proprio_status" ON "public"."admins" FOR SELECT US
 
 
 
+CREATE POLICY "admin_edita_config_geral" ON "public"."config_geral_vulnerabilidade" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
+
+
+
+CREATE POLICY "admin_edita_config_pontuacao" ON "public"."config_pontuacao_vulnerabilidade" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
+
+
+
 CREATE POLICY "admin_edita_empresas" ON "public"."empresas" FOR UPDATE USING ((EXISTS ( SELECT 1
    FROM "public"."admins" "a"
   WHERE ("a"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
@@ -1301,6 +1884,18 @@ CREATE POLICY "admin_edita_pacientes" ON "public"."pacientes" FOR UPDATE USING (
 CREATE POLICY "admin_edita_todos_psicologos" ON "public"."psicologos" FOR UPDATE USING ((EXISTS ( SELECT 1
    FROM "public"."admins" "a"
   WHERE ("a"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
+
+
+
+CREATE POLICY "admin_full_access_avaliacoes" ON "public"."avaliacoes_socioeconomicas" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
+
+
+
+CREATE POLICY "admin_full_access_comprovantes" ON "public"."comprovantes_vulnerabilidade" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
+
+
+
+CREATE POLICY "admin_full_access_pacotes" ON "public"."pacotes_empresa" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
 
 
 
@@ -1390,6 +1985,9 @@ CREATE POLICY "avaliacoes_leitura_publica" ON "public"."avaliacoes" FOR SELECT U
 
 
 
+ALTER TABLE "public"."avaliacoes_socioeconomicas" ENABLE ROW LEVEL SECURITY;
+
+
 CREATE POLICY "checkin_paciente" ON "public"."checkins" USING (("paciente_id" IN ( SELECT "pacientes"."id"
    FROM "public"."pacientes"
   WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
@@ -1397,6 +1995,15 @@ CREATE POLICY "checkin_paciente" ON "public"."checkins" USING (("paciente_id" IN
 
 
 ALTER TABLE "public"."checkins" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."comprovantes_vulnerabilidade" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."config_geral_vulnerabilidade" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."config_pontuacao_vulnerabilidade" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "disponibilidade_leitura_publica" ON "public"."disponibilidade_semanal" FOR SELECT USING (true);
@@ -1414,6 +2021,12 @@ CREATE POLICY "empresa_own" ON "public"."empresas" USING (("email" = ("auth"."jw
 
 
 
+CREATE POLICY "empresa_ve_proprios_pacotes" ON "public"."pacotes_empresa" FOR SELECT USING (("empresa_id" IN ( SELECT "empresas"."id"
+   FROM "public"."empresas"
+  WHERE ("empresas"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
+
+
+
 CREATE POLICY "empresa_vê_colaboradores" ON "public"."pacientes" FOR SELECT USING (("empresa_id" IN ( SELECT "empresas"."id"
    FROM "public"."empresas"
   WHERE ("empresas"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
@@ -1427,6 +2040,14 @@ ALTER TABLE "public"."hipoteses_diagnosticas" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."intercorrencias" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "leitura_publica_config_geral" ON "public"."config_geral_vulnerabilidade" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "leitura_publica_config_pontuacao" ON "public"."config_pontuacao_vulnerabilidade" FOR SELECT USING (true);
+
 
 
 ALTER TABLE "public"."mensalidades_psicologos" ENABLE ROW LEVEL SECURITY;
@@ -1478,6 +2099,40 @@ CREATE POLICY "paciente_gerencia_proprios_checkins" ON "public"."checkins" USING
 
 
 
+CREATE POLICY "paciente_insert_propria_avaliacao" ON "public"."avaliacoes_socioeconomicas" FOR INSERT WITH CHECK (("paciente_id" IN ( SELECT "pacientes"."id"
+   FROM "public"."pacientes"
+  WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
+
+
+
+CREATE POLICY "paciente_insert_proprios_comprovantes" ON "public"."comprovantes_vulnerabilidade" FOR INSERT WITH CHECK (("avaliacao_id" IN ( SELECT "avaliacoes_socioeconomicas"."id"
+   FROM "public"."avaliacoes_socioeconomicas"
+  WHERE ("avaliacoes_socioeconomicas"."paciente_id" IN ( SELECT "pacientes"."id"
+           FROM "public"."pacientes"
+          WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))))));
+
+
+
+CREATE POLICY "paciente_select_propria_avaliacao" ON "public"."avaliacoes_socioeconomicas" FOR SELECT USING (("paciente_id" IN ( SELECT "pacientes"."id"
+   FROM "public"."pacientes"
+  WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
+
+
+
+CREATE POLICY "paciente_select_proprios_comprovantes" ON "public"."comprovantes_vulnerabilidade" FOR SELECT USING (("avaliacao_id" IN ( SELECT "avaliacoes_socioeconomicas"."id"
+   FROM "public"."avaliacoes_socioeconomicas"
+  WHERE ("avaliacoes_socioeconomicas"."paciente_id" IN ( SELECT "pacientes"."id"
+           FROM "public"."pacientes"
+          WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))))));
+
+
+
+CREATE POLICY "paciente_update_propria_avaliacao" ON "public"."avaliacoes_socioeconomicas" FOR UPDATE USING ((("paciente_id" IN ( SELECT "pacientes"."id"
+   FROM "public"."pacientes"
+  WHERE ("pacientes"."email" = ("auth"."jwt"() ->> 'email'::"text")))) AND ("status" = ANY (ARRAY['pendente'::"text", 'em_revisao'::"text"]))));
+
+
+
 CREATE POLICY "paciente_ve_propria_anamnese" ON "public"."anamneses" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."pacientes" "p"
   WHERE (("p"."id" = "anamneses"."paciente_id") AND ("p"."email" = ("auth"."jwt"() ->> 'email'::"text"))))));
@@ -1526,6 +2181,9 @@ ALTER TABLE "public"."pacientes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."pacientes_meupsi" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."pacotes_empresa" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "pagamento_empresa" ON "public"."pagamentos" FOR SELECT USING (("paciente_id" IN ( SELECT "p"."id"
@@ -1917,6 +2575,24 @@ GRANT ALL ON FUNCTION "public"."admin_metricas_gerais"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."alocar_valor_sessao"("p_paciente_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."alocar_valor_sessao"("p_paciente_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."alocar_valor_sessao"("p_paciente_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."aplicar_valor_social_paciente"("p_paciente_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."aplicar_valor_social_paciente"("p_paciente_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."aplicar_valor_social_paciente"("p_paciente_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() TO "anon";
+GRANT ALL ON FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "service_role";
@@ -1932,6 +2608,12 @@ GRANT ALL ON FUNCTION "public"."checar_criar_token"("p_request_id" bigint) TO "s
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."contar_atendimentos_psicologo"("p_psicologo_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."copiar_valor_paciente_para_pagamento"() TO "anon";
+GRANT ALL ON FUNCTION "public"."copiar_valor_paciente_para_pagamento"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."copiar_valor_paciente_para_pagamento"() TO "service_role";
 
 
 
@@ -1971,6 +2653,12 @@ GRANT ALL ON FUNCTION "public"."iniciar_criar_token"("p_sessao_id" "uuid") TO "s
 
 
 
+GRANT ALL ON FUNCTION "public"."liberar_vagas_expiradas"() TO "anon";
+GRANT ALL ON FUNCTION "public"."liberar_vagas_expiradas"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."liberar_vagas_expiradas"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mind_enviar_email"("v_to" "text", "v_assunto" "text", "v_html" "text") TO "service_role";
@@ -1983,9 +2671,45 @@ GRANT ALL ON FUNCTION "public"."mind_notificar_agendamento_aceito"() TO "service
 
 
 
+GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "anon";
+GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."preencher_valores_pagamento"() TO "anon";
+GRANT ALL ON FUNCTION "public"."preencher_valores_pagamento"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."preencher_valores_pagamento"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reprocessar_fila_espera_social"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reprocessar_fila_espera_social"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reprocessar_fila_espera_social"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reprocessar_pagamentos_aguardando"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reprocessar_pagamentos_aguardando"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reprocessar_pagamentos_aguardando"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."trg_fn_avaliacao_status_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."trg_fn_avaliacao_status_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."trg_fn_avaliacao_status_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."trg_fn_pacote_alterado"() TO "anon";
+GRANT ALL ON FUNCTION "public"."trg_fn_pacote_alterado"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."trg_fn_pacote_alterado"() TO "service_role";
 
 
 
@@ -2074,9 +2798,33 @@ GRANT ALL ON TABLE "public"."avaliacoes" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."avaliacoes_socioeconomicas" TO "anon";
+GRANT ALL ON TABLE "public"."avaliacoes_socioeconomicas" TO "authenticated";
+GRANT ALL ON TABLE "public"."avaliacoes_socioeconomicas" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."checkins" TO "anon";
 GRANT ALL ON TABLE "public"."checkins" TO "authenticated";
 GRANT ALL ON TABLE "public"."checkins" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."comprovantes_vulnerabilidade" TO "anon";
+GRANT ALL ON TABLE "public"."comprovantes_vulnerabilidade" TO "authenticated";
+GRANT ALL ON TABLE "public"."comprovantes_vulnerabilidade" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."config_geral_vulnerabilidade" TO "anon";
+GRANT ALL ON TABLE "public"."config_geral_vulnerabilidade" TO "authenticated";
+GRANT ALL ON TABLE "public"."config_geral_vulnerabilidade" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."config_pontuacao_vulnerabilidade" TO "anon";
+GRANT ALL ON TABLE "public"."config_pontuacao_vulnerabilidade" TO "authenticated";
+GRANT ALL ON TABLE "public"."config_pontuacao_vulnerabilidade" TO "service_role";
 
 
 
@@ -2128,6 +2876,12 @@ GRANT ALL ON TABLE "public"."pacientes_meupsi" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."pacotes_empresa" TO "anon";
+GRANT ALL ON TABLE "public"."pacotes_empresa" TO "authenticated";
+GRANT ALL ON TABLE "public"."pacotes_empresa" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."pagamentos" TO "anon";
 GRANT ALL ON TABLE "public"."pagamentos" TO "authenticated";
 GRANT ALL ON TABLE "public"."pagamentos" TO "service_role";
@@ -2149,6 +2903,12 @@ GRANT ALL ON TABLE "public"."psicologos" TO "service_role";
 GRANT ALL ON TABLE "public"."psicologos_publico" TO "anon";
 GRANT ALL ON TABLE "public"."psicologos_publico" TO "authenticated";
 GRANT ALL ON TABLE "public"."psicologos_publico" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "anon";
+GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "authenticated";
+GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "service_role";
 
 
 
