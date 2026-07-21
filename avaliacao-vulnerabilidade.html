@@ -506,7 +506,7 @@
     const { data, error } = await supabase
       .from('pacientes')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('email', user.email)
       .single();
 
     if (error || !data) {
