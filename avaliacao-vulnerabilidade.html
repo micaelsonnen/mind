@@ -672,7 +672,21 @@
         .eq('id', avaliacao.id)
         .single();
 
-      mostrarResultado(avaliacaoFinal ? avaliacaoFinal.status : avaliacao.status);
+      const statusAvaliacao = avaliacaoFinal ? avaliacaoFinal.status : avaliacao.status;
+
+      // 4. se aprovado, a vaga no pacote da empresa já foi decidida na hora
+      // (pela trigger no banco) — busca o resultado exato, não um genérico
+      let statusSocial = null;
+      if (statusAvaliacao === 'aprovado_automatico' || statusAvaliacao === 'aprovado_manual') {
+        const { data: pacienteAtualizado } = await supabase
+          .from('pacientes')
+          .select('status_financeiro_social')
+          .eq('id', pacienteId)
+          .single();
+        statusSocial = pacienteAtualizado ? pacienteAtualizado.status_financeiro_social : null;
+      }
+
+      mostrarResultado(statusAvaliacao, statusSocial);
     } catch (err) {
       console.error(err);
       showError('Não foi possível enviar sua avaliação agora. Tente novamente em alguns minutos.');
@@ -681,7 +695,7 @@
     }
   }
 
-  function mostrarResultado(status) {
+  function mostrarResultado(status, statusSocial) {
     document.getElementById('step3').style.display = 'none';
     document.querySelector('.progress').style.display = 'none';
 
@@ -689,12 +703,22 @@
     const title = document.getElementById('resultTitle');
     const text = document.getElementById('resultText');
 
-    banner.className = `result-banner ${status}`;
+    // aprovado + vaga confirmada na hora, aprovado + aguardando pacote,
+    // ou os estados que não dependem de vaga (em análise / rejeitado)
+    const chaveVisual = status === 'aprovado_automatico' || status === 'aprovado_manual'
+      ? (statusSocial === 'aguardando_empresa' ? 'aguardando_empresa' : 'aprovado_confirmado')
+      : status;
+
+    banner.className = `result-banner ${chaveVisual === 'aguardando_empresa' ? 'em_revisao' : (chaveVisual === 'aprovado_confirmado' ? 'aprovado_automatico' : chaveVisual)}`;
 
     const conteudo = {
-      aprovado_automatico: {
-        title: 'Você tem direito ao valor social',
-        text: 'Sua avaliação foi aprovada automaticamente. Ao agendar, você paga o valor social sempre que houver vaga disponível em um pacote de empresa parceira — se não houver no momento, sua sessão fica reservada até liberar.',
+      aprovado_confirmado: {
+        title: 'Valor social confirmado',
+        text: 'Sua avaliação foi aprovada e já garantimos sua vaga no valor social. Você já pode agendar pagando a coparticipação reduzida.',
+      },
+      aguardando_empresa: {
+        title: 'Aprovado — aguardando vaga em pacote de empresa',
+        text: 'Sua avaliação foi aprovada, mas no momento não há vaga disponível em nenhum pacote de empresa parceira. Assim que uma vaga abrir, seu valor social é confirmado automaticamente e você é avisado.',
       },
       em_revisao: {
         title: 'Recebemos sua avaliação',
@@ -704,17 +728,13 @@
         title: 'Recebemos sua avaliação',
         text: 'Sua resposta está em análise. Você pode enviar um comprovante a qualquer momento para agilizar o processo.',
       },
-      aprovado_manual: {
-        title: 'Você tem direito ao valor social',
-        text: 'Sua avaliação foi aprovada após análise. Ao agendar, você paga o valor social sempre que houver vaga disponível em um pacote de empresa parceira — se não houver no momento, sua sessão fica reservada até liberar.',
-      },
       rejeitado: {
         title: 'Não foi possível liberar o valor social',
         text: 'Pelas informações enviadas, você não se enquadra no programa social no momento. Você ainda pode agendar sessões com o valor integral.',
       },
     };
 
-    const info = conteudo[status] || conteudo.pendente;
+    const info = conteudo[chaveVisual] || conteudo.pendente;
     title.textContent = info.title;
     text.textContent = info.text;
 

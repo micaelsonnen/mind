@@ -1,0 +1,85 @@
+<!--
+  snippet-aviso-vaga-social.html
+
+  Onde usar: qualquer tela que o paciente vê regularmente — dashboard,
+  tela de agendamento, etc. Diferente da versão anterior, isso NÃO
+  depende de criar um pagamento primeiro: o status já existe assim que
+  a avaliação é aprovada, então pode aparecer assim que a página carrega.
+
+  Como usar:
+  1. Cole o <div id="avisoVagaSocial"> onde fizer sentido no layout.
+  2. Chame carregarAvisoVagaSocial(pacienteId) ao carregar a página.
+  3. O aviso só aparece quando status_financeiro_social = 'aguardando_empresa'
+     — nos outros casos (confirmado, nenhum) o div fica vazio, sem poluir
+     a tela.
+-->
+
+<div id="avisoVagaSocial"></div>
+
+<style>
+  .aviso-vaga-social {
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 16px 0;
+    background: #FDF3E7;
+    color: #8A5A00;
+  }
+
+  .aviso-vaga-social strong { display: block; margin-bottom: 4px; font-size: 15px; }
+</style>
+
+<script>
+  /**
+   * Busca o status financeiro social do paciente e mostra o aviso de
+   * espera, se for o caso. Assume que `supabase` já está inicializado
+   * no escopo global da página.
+   * @param {string} pacienteId
+   */
+  async function carregarAvisoVagaSocial(pacienteId) {
+    const container = document.getElementById('avisoVagaSocial');
+    if (!container || !pacienteId) return;
+
+    const { data, error } = await supabase
+      .from('pacientes')
+      .select('status_financeiro_social, aguardando_desde')
+      .eq('id', pacienteId)
+      .single();
+
+    if (error || !data) return;
+
+    if (data.status_financeiro_social !== 'aguardando_empresa') {
+      container.innerHTML = '';
+      return;
+    }
+
+    const desde = data.aguardando_desde
+      ? new Date(data.aguardando_desde).toLocaleDateString('pt-BR')
+      : null;
+
+    container.innerHTML = `
+      <div class="aviso-vaga-social">
+        <strong>Aguardando vaga em pacote de empresa</strong>
+        Seu valor social já foi aprovado. Assim que uma vaga em um pacote
+        de empresa parceira liberar, ele é confirmado automaticamente
+        ${desde ? `(em espera desde ${desde})` : ''}. Você pode continuar
+        agendando sessões com o valor integral enquanto isso, se preferir.
+      </div>
+    `;
+  }
+
+  // -------------------------------------------------------------------
+  // Exemplo de uso, ao carregar o dashboard do paciente:
+  // -------------------------------------------------------------------
+  //
+  // const { data: { user } } = await supabase.auth.getUser();
+  // const { data: paciente } = await supabase
+  //   .from('pacientes')
+  //   .select('id')
+  //   .eq('email', user.email)
+  //   .single();
+  //
+  // if (paciente) carregarAvisoVagaSocial(paciente.id);
+</script>
