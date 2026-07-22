@@ -284,6 +284,55 @@ $$;
 ALTER FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."calcular_valor_sessao"("p_paciente_id" "uuid") RETURNS TABLE("valor_paciente" numeric, "valor_empresa" numeric, "valor_plataforma_subsidio" numeric, "valor_repasse_psicologo" numeric, "origem_subsidio" "text")
+    LANGUAGE "plpgsql" STABLE
+    AS $$
+declare
+  v_config record;
+  v_tem_vulnerabilidade boolean;
+  v_empresa_id uuid;
+begin
+  select * into v_config from config_precos_sessao where id = 1;
+  v_tem_vulnerabilidade := paciente_tem_vulnerabilidade_valida(p_paciente_id);
+
+  -- ajuste o nome da coluna abaixo se o vínculo paciente->empresa
+  -- tiver outro nome no seu schema real
+  select empresa_id into v_empresa_id from pacientes where id = p_paciente_id;
+
+  if not v_tem_vulnerabilidade then
+    -- cenário (a): valor integral
+    return query select
+      v_config.valor_sessao_integral,
+      0.00::numeric,
+      0.00::numeric,
+      v_config.valor_repasse_psicologo,
+      'nenhum'::text;
+
+  elsif v_empresa_id is not null then
+    -- cenário (b): split real com empresa patrocinadora
+    return query select
+      v_config.valor_copagamento_social,
+      v_config.valor_subsidio_empresa,
+      0.00::numeric,
+      v_config.valor_repasse_psicologo,
+      'empresa'::text;
+
+  else
+    -- cenário (c): plataforma cobre a parte que seria da empresa
+    return query select
+      v_config.valor_copagamento_social,
+      0.00::numeric,
+      v_config.valor_subsidio_empresa,
+      v_config.valor_repasse_psicologo,
+      'plataforma'::text;
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."calcular_valor_sessao"("p_paciente_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -715,20 +764,50 @@ $$;
 ALTER FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."paciente_tem_vulnerabilidade_valida"("p_paciente_id" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql" STABLE
+    AS $$
+declare
+  v_avaliacao record;
+  v_meses int;
+begin
+  select validade_avaliacao_meses into v_meses from config_precos_sessao where id = 1;
+
+  select status, coalesce(revisado_em, criado_em) as data_referencia
+  into v_avaliacao
+  from avaliacoes_socioeconomicas
+  where paciente_id = p_paciente_id
+    and status in ('aprovado_automatico', 'aprovado_manual')
+  order by coalesce(revisado_em, criado_em) desc
+  limit 1;
+
+  if v_avaliacao is null then
+    return false;
+  end if;
+
+  return v_avaliacao.data_referencia >= (now() - (v_meses || ' months')::interval);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."paciente_tem_vulnerabilidade_valida"("p_paciente_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."preencher_valores_pagamento"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
 declare
   v_calculo record;
 begin
+  -- só recalcula se os valores não vierem preenchidos manualmente
   if new.valor_paciente is null then
-    select * into v_calculo from alocar_valor_sessao(new.paciente_id);
+    select * into v_calculo from calcular_valor_sessao(new.paciente_id);
 
     new.valor_paciente := v_calculo.valor_paciente;
     new.valor_empresa := v_calculo.valor_empresa;
+    new.valor_plataforma_subsidio := v_calculo.valor_plataforma_subsidio;
     new.valor_repasse_psicologo := v_calculo.valor_repasse_psicologo;
-    new.pacote_id := v_calculo.pacote_id;
-    new.status_financeiro := v_calculo.status_financeiro;
+    new.origem_subsidio := v_calculo.origem_subsidio;
   end if;
 
   return new;
@@ -1022,6 +1101,21 @@ CREATE TABLE IF NOT EXISTS "public"."config_pontuacao_vulnerabilidade" (
 ALTER TABLE "public"."config_pontuacao_vulnerabilidade" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."config_precos_sessao" (
+    "id" integer DEFAULT 1 NOT NULL,
+    "valor_sessao_integral" numeric(10,2) DEFAULT 100.00 NOT NULL,
+    "valor_copagamento_social" numeric(10,2) DEFAULT 10.00 NOT NULL,
+    "valor_subsidio_empresa" numeric(10,2) DEFAULT 40.00 NOT NULL,
+    "valor_repasse_psicologo" numeric(10,2) DEFAULT 50.00 NOT NULL,
+    "validade_avaliacao_meses" integer DEFAULT 6 NOT NULL,
+    CONSTRAINT "singleton" CHECK (("id" = 1)),
+    CONSTRAINT "soma_bate_com_repasse" CHECK ((("valor_copagamento_social" + "valor_subsidio_empresa") = "valor_repasse_psicologo"))
+);
+
+
+ALTER TABLE "public"."config_precos_sessao" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."disponibilidade_semanal" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "psicologo_id" "uuid" NOT NULL,
@@ -1235,7 +1329,9 @@ CREATE TABLE IF NOT EXISTS "public"."pagamentos" (
     "valor_total" numeric(10,2) DEFAULT 50.00,
     "status_pagamento" "text" DEFAULT 'pendente'::"text",
     "valor_repasse_psicologo" numeric(10,2),
-    "pacote_id" "uuid"
+    "pacote_id" "uuid",
+    "valor_plataforma_subsidio" numeric(10,2),
+    "origem_subsidio" "text"
 );
 
 
@@ -1363,6 +1459,19 @@ CREATE OR REPLACE VIEW "public"."resumo_pacotes_empresa" AS
 
 
 ALTER VIEW "public"."resumo_pacotes_empresa" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."resumo_subsidio_plataforma" AS
+ SELECT "date_trunc"('month'::"text", "criado_em") AS "mes",
+    "count"(*) AS "sessoes_subsidiadas",
+    "sum"("valor_plataforma_subsidio") AS "total_subsidiado"
+   FROM "public"."pagamentos"
+  WHERE ("origem_subsidio" = 'plataforma'::"text")
+  GROUP BY ("date_trunc"('month'::"text", "criado_em"))
+  ORDER BY ("date_trunc"('month'::"text", "criado_em")) DESC;
+
+
+ALTER VIEW "public"."resumo_subsidio_plataforma" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."sessoes" (
@@ -1502,6 +1611,11 @@ ALTER TABLE ONLY "public"."config_geral_vulnerabilidade"
 
 ALTER TABLE ONLY "public"."config_pontuacao_vulnerabilidade"
     ADD CONSTRAINT "config_pontuacao_vulnerabilidade_pkey" PRIMARY KEY ("criterio");
+
+
+
+ALTER TABLE ONLY "public"."config_precos_sessao"
+    ADD CONSTRAINT "config_precos_sessao_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1808,11 +1922,6 @@ ALTER TABLE ONLY "public"."pacientes_meupsi"
 
 
 ALTER TABLE ONLY "public"."pacientes"
-    ADD CONSTRAINT "pacientes_pacote_ativo_id_fkey" FOREIGN KEY ("pacote_ativo_id") REFERENCES "public"."pacotes_empresa"("id");
-
-
-
-ALTER TABLE ONLY "public"."pacientes"
     ADD CONSTRAINT "pacientes_psicologo_id_fkey" FOREIGN KEY ("psicologo_id") REFERENCES "public"."psicologos"("id") ON DELETE SET NULL;
 
 
@@ -1869,6 +1978,14 @@ CREATE POLICY "admin_edita_config_pontuacao" ON "public"."config_pontuacao_vulne
 
 
 
+CREATE POLICY "admin_edita_config_precos" ON "public"."config_precos_sessao" USING ((EXISTS ( SELECT 1
+   FROM "public"."admins"
+  WHERE ("admins"."email" = ("auth"."jwt"() ->> 'email'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."admins"
+  WHERE ("admins"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
+
+
+
 CREATE POLICY "admin_edita_empresas" ON "public"."empresas" FOR UPDATE USING ((EXISTS ( SELECT 1
    FROM "public"."admins" "a"
   WHERE ("a"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
@@ -1895,7 +2012,11 @@ CREATE POLICY "admin_full_access_comprovantes" ON "public"."comprovantes_vulnera
 
 
 
-CREATE POLICY "admin_full_access_pacotes" ON "public"."pacotes_empresa" USING ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text")) WITH CHECK ((("auth"."jwt"() ->> 'email'::"text") = 'micaelsonnen@gmail.com'::"text"));
+CREATE POLICY "admin_full_access_pacotes" ON "public"."pacotes_empresa" USING ((EXISTS ( SELECT 1
+   FROM "public"."admins"
+  WHERE ("admins"."email" = ("auth"."jwt"() ->> 'email'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."admins"
+  WHERE ("admins"."email" = ("auth"."jwt"() ->> 'email'::"text")))));
 
 
 
@@ -2006,6 +2127,9 @@ ALTER TABLE "public"."config_geral_vulnerabilidade" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."config_pontuacao_vulnerabilidade" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."config_precos_sessao" ENABLE ROW LEVEL SECURITY;
+
+
 CREATE POLICY "disponibilidade_leitura_publica" ON "public"."disponibilidade_semanal" FOR SELECT USING (true);
 
 
@@ -2047,6 +2171,10 @@ CREATE POLICY "leitura_publica_config_geral" ON "public"."config_geral_vulnerabi
 
 
 CREATE POLICY "leitura_publica_config_pontuacao" ON "public"."config_pontuacao_vulnerabilidade" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "leitura_publica_config_precos" ON "public"."config_precos_sessao" FOR SELECT USING (true);
 
 
 
@@ -2593,6 +2721,12 @@ GRANT ALL ON FUNCTION "public"."calcular_pontuacao_vulnerabilidade"() TO "servic
 
 
 
+GRANT ALL ON FUNCTION "public"."calcular_valor_sessao"("p_paciente_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."calcular_valor_sessao"("p_paciente_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calcular_valor_sessao"("p_paciente_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."checar_criar_sala"("p_sessao_id" "uuid", "p_request_id" bigint) TO "service_role";
@@ -2674,6 +2808,12 @@ GRANT ALL ON FUNCTION "public"."mind_notificar_agendamento_aceito"() TO "service
 GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "anon";
 GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mover_para_revisao_ao_enviar_comprovante"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."paciente_tem_vulnerabilidade_valida"("p_paciente_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."paciente_tem_vulnerabilidade_valida"("p_paciente_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."paciente_tem_vulnerabilidade_valida"("p_paciente_id" "uuid") TO "service_role";
 
 
 
@@ -2828,6 +2968,12 @@ GRANT ALL ON TABLE "public"."config_pontuacao_vulnerabilidade" TO "service_role"
 
 
 
+GRANT ALL ON TABLE "public"."config_precos_sessao" TO "anon";
+GRANT ALL ON TABLE "public"."config_precos_sessao" TO "authenticated";
+GRANT ALL ON TABLE "public"."config_precos_sessao" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."disponibilidade_semanal" TO "anon";
 GRANT ALL ON TABLE "public"."disponibilidade_semanal" TO "authenticated";
 GRANT ALL ON TABLE "public"."disponibilidade_semanal" TO "service_role";
@@ -2909,6 +3055,12 @@ GRANT ALL ON TABLE "public"."psicologos_publico" TO "service_role";
 GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "anon";
 GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "authenticated";
 GRANT ALL ON TABLE "public"."resumo_pacotes_empresa" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."resumo_subsidio_plataforma" TO "anon";
+GRANT ALL ON TABLE "public"."resumo_subsidio_plataforma" TO "authenticated";
+GRANT ALL ON TABLE "public"."resumo_subsidio_plataforma" TO "service_role";
 
 
 
